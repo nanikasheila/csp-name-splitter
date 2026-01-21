@@ -1,0 +1,37 @@
+version: 1
+
+input:
+  psd_path: ""
+
+grid:
+  rows: 4
+  cols: 4
+  order: rtl_ttb
+  margin_px: 0
+  gutter_px: 0
+
+merge:
+  group_rules:
+    - group_name: "Text"
+      output_layer: "text"
+    - group_name: "Speech"
+      output_layer: "text"
+  layer_rules:
+    - layer_name: "Lines"
+      output_layer: "lines"
+    - layer_name: "BG"
+      output_layer: "bg"
+    - layer_name: "Notes"
+      output_layer: "notes"
+  include_hidden_layers: false
+
+output:
+  out_dir: ""
+  page_basename: "page_{page:03d}"
+  layer_stack: ["bg", "lines", "text", "notes"]
+  raster_ext: "png"
+  container: "psd"
+
+limits:
+  max_dim_px: 30000
+  on_exceed: "error"
