@@ -7,7 +7,8 @@ from typing import Callable
 from .config import Config
 from .errors import LimitExceededError
 from .grid import compute_cells
-from .psd_read import PsdInfo, read_psd
+from .merge import MergeResult, apply_merge_rules
+from .psd_read import PsdInfo, read_psd_document
 from .render import RenderPlan, write_plan
 
 
@@ -55,12 +56,18 @@ def run_job(
         if cancel_token and cancel_token.cancelled:
             raise RuntimeError("Job cancelled")
 
-    report("load_psd", 0, 1, "Reading PSD metadata")
-    psd_info = read_psd(input_psd)
-    report("load_psd", 1, 1, "PSD metadata loaded")
+    report("load_psd", 0, 1, "Reading PSD")
+    psd_doc = read_psd_document(input_psd)
+    psd_info = psd_doc.info
+    report("load_psd", 1, 1, "PSD loaded")
     check_cancel()
 
     _enforce_limits(psd_info, cfg)
+
+    report("merge_layers", 0, 1, "Applying merge rules")
+    merge_result = apply_merge_rules(psd_doc.layers, cfg.merge)
+    report("merge_layers", 1, 1, "Merge rules applied")
+    check_cancel()
 
     report("grid", 0, 1, "Computing grid")
     cells = compute_cells(psd_info.width, psd_info.height, cfg.grid)
@@ -71,7 +78,7 @@ def run_job(
 
     output_dir = _resolve_out_dir(input_psd, cfg, out_dir)
     report("render_plan", 0, 1, "Writing plan")
-    plan = write_plan(output_dir, psd_info, cells, cfg, selected_pages)
+    plan = write_plan(output_dir, psd_info, cells, cfg, selected_pages, merge_result=merge_result)
     report("render_plan", 1, 1, f"Plan written: {plan.manifest_path}")
 
     return JobResult(out_dir=output_dir, page_count=len(selected_pages), plan=plan)

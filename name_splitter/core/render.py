@@ -6,6 +6,7 @@ from pathlib import Path
 
 from .config import Config
 from .grid import CellRect
+from .merge import MergeResult
 from .psd_read import PsdInfo
 
 
@@ -21,6 +22,7 @@ def write_plan(
     cells: list[CellRect],
     cfg: Config,
     selected_pages: list[int],
+    merge_result: MergeResult | None = None,
 ) -> RenderPlan:
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = out_dir / "plan.json"
@@ -50,7 +52,18 @@ def write_plan(
             "raster_ext": cfg.output.raster_ext,
             "container": cfg.output.container,
         },
+        "merge": _serialize_merge(merge_result),
         "pages": page_entries,
     }
     manifest_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return RenderPlan(out_dir=out_dir, manifest_path=manifest_path)
+
+
+def _serialize_merge(merge_result: MergeResult | None) -> dict[str, object]:
+    if merge_result is None:
+        return {"outputs": {}, "unmatched": 0, "warnings": []}
+    return {
+        "outputs": {key: len(value) for key, value in merge_result.outputs.items()},
+        "unmatched": len(merge_result.unmatched),
+        "warnings": list(merge_result.warnings),
+    }
