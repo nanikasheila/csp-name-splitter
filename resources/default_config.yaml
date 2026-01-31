@@ -1,7 +1,7 @@
 version: 1
 
 input:
-  psd_path: ""
+  image_path: ""
 
 grid:
   rows: 4
@@ -11,26 +11,17 @@ grid:
   gutter_px: 0
 
 merge:
-  group_rules:
-    - group_name: "Text"
-      output_layer: "text"
-    - group_name: "Speech"
-      output_layer: "text"
-  layer_rules:
-    - layer_name: "Lines"
-      output_layer: "lines"
-    - layer_name: "BG"
-      output_layer: "bg"
-    - layer_name: "Notes"
-      output_layer: "notes"
+  group_rules: []
+  layer_rules: []
   include_hidden_layers: false
 
 output:
   out_dir: ""
   page_basename: "page_{page:03d}"
-  layer_stack: ["bg", "lines", "text", "notes"]
+  layer_stack: ["flat"]
   raster_ext: "png"
-  container: "psd"
+  container: "png"
+  layout: "layers"
 
 limits:
   max_dim_px: 30000

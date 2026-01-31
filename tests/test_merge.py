@@ -2,7 +2,7 @@ import unittest
 
 from name_splitter.core.config import MergeConfig, MergeRule
 from name_splitter.core.merge import apply_merge_rules
-from name_splitter.core.psd_read import LayerNode
+from name_splitter.core.image_read import LayerNode
 
 
 class MergeTests(unittest.TestCase):

@@ -6,7 +6,7 @@ from name_splitter.core.config import Config, GridConfig, MergeConfig, MergeRule
 from name_splitter.core.grid import compute_cells
 from name_splitter.core.image_ops import ImageData
 from name_splitter.core.merge import apply_merge_rules
-from name_splitter.core.psd_read import LayerNode, LayerPixels, PsdInfo
+from name_splitter.core.image_read import ImageInfo, LayerNode, LayerPixels
 from name_splitter.core.render import render_pages
 
 
@@ -65,12 +65,12 @@ class RenderTests(unittest.TestCase):
             merge=MergeConfig(layer_rules=(MergeRule(layer_name="BG", output_layer="bg"),)),
             output=OutputConfig(raster_ext="ppm", layer_stack=("bg",)),
         )
-        psd_info = PsdInfo(width=2, height=2)
-        cells = compute_cells(psd_info.width, psd_info.height, cfg.grid)
+        image_info = ImageInfo(width=2, height=2)
+        cells = compute_cells(image_info.width, image_info.height, cfg.grid)
         merge_result = apply_merge_rules(layers, cfg.merge, canvas_size=(2, 2))
         with tempfile.TemporaryDirectory() as temp_dir:
             output_dir = Path(temp_dir)
-            pages = render_pages(output_dir, psd_info, cells, cfg, [0, 1], merge_result)
+            pages = render_pages(output_dir, image_info, cells, cfg, [0, 1], merge_result)
             self.assertEqual(len(pages), 2)
             for page in pages:
                 path = page.layer_paths["bg"]

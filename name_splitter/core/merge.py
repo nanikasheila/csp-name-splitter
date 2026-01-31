@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 
 from .config import MergeConfig
 from .image_ops import ImageData, composite_layers
-from .psd_read import LayerNode, LayerPixels
+from .image_read import LayerNode, LayerPixels
 
 
 @dataclass(frozen=True)

@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from .errors import PsdReadError
+from .errors import ImageReadError
 
 RGBA = tuple[int, int, int, int]
 
@@ -28,7 +28,7 @@ class ImageData:
         try:
             converted = image.convert("RGBA")
         except Exception as exc:  # noqa: BLE001
-            raise PsdReadError("Failed to convert layer image to RGBA") from exc
+            raise ImageReadError("Failed to convert image to RGBA") from exc
         width, height = converted.size
         data = list(converted.getdata())
         pixels = [data[row * width : (row + 1) * width] for row in range(height)]

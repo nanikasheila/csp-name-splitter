@@ -3,12 +3,13 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Callable
 
 from .config import Config
 from .grid import CellRect
 from .merge import MergeResult
 from .image_ops import ImageData
-from .psd_read import PsdInfo
+from .image_read import ImageInfo
 
 
 @dataclass(frozen=True)
@@ -28,7 +29,7 @@ class RenderedPage:
 
 def write_plan(
     out_dir: Path,
-    psd_info: PsdInfo,
+    image_info: ImageInfo,
     cells: list[CellRect],
     cfg: Config,
     selected_pages: list[int],
@@ -49,7 +50,7 @@ def write_plan(
             }
         )
     payload = {
-        "psd": {"width": psd_info.width, "height": psd_info.height},
+        "source": {"width": image_info.width, "height": image_info.height},
         "grid": {
             "rows": cfg.grid.rows,
             "cols": cfg.grid.cols,
@@ -62,6 +63,7 @@ def write_plan(
             "layer_stack": list(cfg.output.layer_stack),
             "raster_ext": cfg.output.raster_ext,
             "container": cfg.output.container,
+            "layout": cfg.output.layout,
         },
         "merge": _serialize_merge(merge_result),
         "pages": page_entries,
@@ -72,33 +74,43 @@ def write_plan(
 
 def render_pages(
     out_dir: Path,
-    psd_info: PsdInfo,
+    image_info: ImageInfo,
     cells: list[CellRect],
     cfg: Config,
     selected_pages: list[int],
     merge_result: MergeResult,
+    on_page: Callable[[RenderedPage, int, int], None] | None = None,
 ) -> list[RenderedPage]:
     # 合成済み画像をセル単位で切り出して保存
     if not merge_result.output_images:
         raise RuntimeError("No merged images available for rendering")
     out_dir.mkdir(parents=True, exist_ok=True)
     pages: list[RenderedPage] = []
-    for page_index in selected_pages:
+    total_pages = len(selected_pages)
+    for index, page_index in enumerate(selected_pages, start=1):
         cell = cells[page_index]
         page_name = cfg.output.page_basename.format(page=page_index + 1)
         page_dir = out_dir / page_name
-        page_dir.mkdir(parents=True, exist_ok=True)
         layer_paths: dict[str, Path] = {}
         for layer_name in cfg.output.layer_stack:
             image = merge_result.output_images.get(layer_name)
             if image is None:
                 # 指定レイヤーがない場合は透明で埋める
-                image = ImageData.blank(psd_info.width, psd_info.height)
+                image = ImageData.blank(image_info.width, image_info.height)
             cropped = image.crop(cell.x0, cell.y0, cell.x1, cell.y1)
-            path = page_dir / f"{layer_name}.{cfg.output.raster_ext}"
+            if cfg.output.layout == "layers":
+                layer_dir = out_dir / layer_name
+                layer_dir.mkdir(parents=True, exist_ok=True)
+                path = layer_dir / f"{page_name}.{cfg.output.raster_ext}"
+            else:
+                page_dir.mkdir(parents=True, exist_ok=True)
+                path = page_dir / f"{layer_name}.{cfg.output.raster_ext}"
             cropped.save(path)
             layer_paths[layer_name] = path
-        pages.append(RenderedPage(page_index=page_index, page_dir=page_dir, layer_paths=layer_paths))
+        rendered = RenderedPage(page_index=page_index, page_dir=page_dir, layer_paths=layer_paths)
+        pages.append(rendered)
+        if on_page:
+            on_page(rendered, index, total_pages)
     return pages
 
 

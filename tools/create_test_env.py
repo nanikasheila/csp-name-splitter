@@ -2,21 +2,23 @@ from __future__ import annotations
 
 from pathlib import Path
 
+from name_splitter.core.image_ops import ImageData
+
 TEST_ENV_DIR = Path(__file__).resolve().parents[1] / "test_env"
 
 
-def write_sample_ppm(path: Path, width: int = 16, height: int = 16) -> None:
-    header = f"P3\n{width} {height}\n255\n"
-    lines = [header]
-    for y in range(height):
-        row = []
-        for x in range(width):
-            if (x + y) % 2 == 0:
-                row.append("255 255 255")
-            else:
-                row.append("30 30 30")
-        lines.append(" ".join(row) + "\n")
-    path.write_text("".join(lines), encoding="utf-8")
+def write_sample_png(path: Path, width: int = 16, height: int = 16) -> None:
+  pixels = []
+  for y in range(height):
+    row = []
+    for x in range(width):
+      if (x + y) % 2 == 0:
+        row.append((255, 255, 255, 255))
+      else:
+        row.append((30, 30, 30, 255))
+    pixels.append(row)
+  image = ImageData(width=width, height=height, pixels=pixels)
+  image.save(path)
 
 
 def write_config(path: Path) -> None:
@@ -24,7 +26,7 @@ def write_config(path: Path) -> None:
         """version: 1
 
 input:
-  psd_path: ""
+  image_path: ""
 
 grid:
   rows: 4
@@ -34,16 +36,27 @@ grid:
   gutter_px: 0
 
 merge:
-  group_rules: []
-  layer_rules: []
+  group_rules:
+    - group_name: "Lines"
+      output_layer: "lines"
+    - group_name: "BG"
+      output_layer: "bg"
+    - group_name: "Notes"
+      output_layer: "notes"
+  layer_rules:
+    - layer_name: "template"
+      output_layer: "frame"
+    - layer_name: "Frame"
+      output_layer: "frame"
   include_hidden_layers: false
 
 output:
   out_dir: "output"
   page_basename: "page_{page:03d}"
-  layer_stack: ["bg", "lines", "text", "notes"]
+  layer_stack: ["flat"]
   raster_ext: "png"
-  container: "psd"
+  container: "png"
+  layout: "layers"
 
 limits:
   max_dim_px: 30000
@@ -66,16 +79,10 @@ def write_readme(path: Path) -> None:
 
 ## 使い方
 
-1. 画像をPSDに変換（ImageMagickが必要）
+1. CLIで実行
 
 ```bash
-convert sample.ppm sample.psd
-```
-
-2. CLIで実行
-
-```bash
-python -m name_splitter.app.cli sample.psd --config test_config.yaml --out-dir output
+python -m name_splitter.app.cli sample.png --config test_config.yaml --out-dir output
 ```
 
 3. 生成される `output/plan.json` を確認
@@ -86,7 +93,7 @@ python -m name_splitter.app.cli sample.psd --config test_config.yaml --out-dir o
 
 def main() -> None:
     TEST_ENV_DIR.mkdir(parents=True, exist_ok=True)
-    write_sample_ppm(TEST_ENV_DIR / "sample.ppm")
+    write_sample_png(TEST_ENV_DIR / "sample.png")
     write_config(TEST_ENV_DIR / "test_config.yaml")
     write_readme(TEST_ENV_DIR / "README.md")
     print(f"Test environment written to {TEST_ENV_DIR}")

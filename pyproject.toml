@@ -1,0 +1,24 @@
+[build-system]
+requires = ["setuptools>=67", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "csp-name-splitter"
+version = "0.1.0"
+description = "Split CSP name images into per-page PNG outputs."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "Pillow>=9.0",
+  "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+gui = ["flet>=0.20"]
+test = ["pytest>=7.0"]
+
+[project.scripts]
+csp-name-splitter = "name_splitter.app.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["name_splitter*"]

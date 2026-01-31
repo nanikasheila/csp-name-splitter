@@ -8,11 +8,12 @@ from .errors import ConfigError
 
 ALLOWED_GRID_ORDERS = {"rtl_ttb", "ltr_ttb"}
 ALLOWED_ON_EXCEED = {"error"}
+ALLOWED_OUTPUT_LAYOUTS = {"pages", "layers"}
 
 
 @dataclass(frozen=True)
 class InputConfig:
-    psd_path: str = ""
+    image_path: str = ""
 
 
 @dataclass(frozen=True)
@@ -42,9 +43,10 @@ class MergeConfig:
 class OutputConfig:
     out_dir: str = ""
     page_basename: str = "page_{page:03d}"
-    layer_stack: tuple[str, ...] = ("bg", "lines", "text", "notes")
+    layer_stack: tuple[str, ...] = ("flat",)
     raster_ext: str = "png"
-    container: str = "psd"
+    container: str = "png"
+    layout: str = "layers"
 
 
 @dataclass(frozen=True)
@@ -122,9 +124,10 @@ def load_config(path: str | Path) -> Config:
         include_hidden_layers=bool(merge_section.get("include_hidden_layers", False)),
     )
 
+    input_path = input_section.get("image_path", input_section.get("psd_path", ""))
     config = Config(
         version=int(raw.get("version", 1)),
-        input=InputConfig(psd_path=str(input_section.get("psd_path", ""))),
+        input=InputConfig(image_path=str(input_path)),
         grid=GridConfig(
             rows=int(grid_section.get("rows", 4)),
             cols=int(grid_section.get("cols", 4)),
@@ -136,9 +139,12 @@ def load_config(path: str | Path) -> Config:
         output=OutputConfig(
             out_dir=str(output_section.get("out_dir", "")),
             page_basename=str(output_section.get("page_basename", "page_{page:03d}")),
-            layer_stack=tuple(output_section.get("layer_stack", ("bg", "lines", "text", "notes"))),
+            layer_stack=tuple(
+                output_section.get("layer_stack", ("flat",))
+            ),
             raster_ext=str(output_section.get("raster_ext", "png")),
-            container=str(output_section.get("container", "psd")),
+            container=str(output_section.get("container", "png")),
+            layout=str(output_section.get("layout", "layers")),
         ),
         limits=LimitsConfig(
             max_dim_px=int(limits_section.get("max_dim_px", 30000)),
@@ -169,3 +175,5 @@ def validate_config(cfg: Config) -> None:
         raise ConfigError(f"limits.on_exceed must be one of {sorted(ALLOWED_ON_EXCEED)}")
     if not cfg.output.layer_stack:
         raise ConfigError("output.layer_stack must not be empty")
+    if cfg.output.layout not in ALLOWED_OUTPUT_LAYOUTS:
+        raise ConfigError(f"output.layout must be one of {sorted(ALLOWED_OUTPUT_LAYOUTS)}")

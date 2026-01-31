@@ -6,9 +6,9 @@ class LimitExceededError(ValueError):
     """Raised when input exceeds configured limits."""
 
 
-class ImageMagickNotFoundError(RuntimeError):
-    """Raised when ImageMagick is unavailable."""
+class ImageReadError(RuntimeError):
+    """Raised when the input image cannot be read."""
 
 
-class PsdReadError(RuntimeError):
-    """Raised when the PSD cannot be read."""
+class PsdReadError(ImageReadError):
+    """Backward-compatible alias for ImageReadError."""

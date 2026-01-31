@@ -4,7 +4,7 @@ CSPネーム分割ツール
 ## 目的
 
 * CSPで作成した「16ページ俯瞰ネーム（1枚）」を自動でページ分割
-* CSP EXの複数ページ作品として一括取り込み可能なPSD群を生成
+* CSP EXの複数ページ作品として一括取り込み可能なPNG群を生成
 
 制約・方針:
 
@@ -19,28 +19,47 @@ CSPネーム分割ツール
 ```
 CSP (.clip)
   ↓ 書き出し
-PSD（レイヤー・フォルダ構造あり）
-  ↓ 読み取り（psd-tools）
-RGBA合成（フォルダ統合・レイヤ抽出）
+PNG（1枚画像）
+  ↓ 読み取り（Pillow）
+RGBA処理
   ↓ 均等セル分割
-ページ別レイヤーPNG群
-  ↓ ImageMagick
-1ページ = 1PSD
+ページ別PNG群
   ↓ CSP EX
 バッチインポート（1回）
 ```
 
-* PSDの読み取り: psd-tools
-* PSDの生成: ImageMagick
+* 画像の読み取り: Pillow
 * 正規化の最終責任: CSP EX
+
+## セットアップ（開発・実行）
+
+### 依存関係
+
+* Python 3.10+
+* Pillow（PNG読み取り/書き出し）
+* GUIを使う場合: Flet
+
+### GUI 起動メモ
+
+* GUIはFletを使います。未導入の場合はFletを導入してください。
+* `--gui` を付けるとGUIが起動します（CLIと同じCoreを使用）。
+
+### Pillow
+
+* PNGの読み取り/保存にPillowを使用します。
+
+## トラブルシュート（代表例）
+
+* `LimitExceededError`: 画像サイズが上限（30000px）を超過。CSP側で縮小して再出力。
+* `ImageReadError`: 入力画像の破損、Pillow未導入、または書き出し不整合。
+* GUI起動失敗: Flet未導入、または環境依存の表示系エラー。
 
 ## 重要な設計判断
 
-### 非対称フォーマットの理解
+### 単一画像前提
 
-* PSDは「読む」のは容易だが「正しく書く」のが難しい
-* psd-toolsは読み取り専用と割り切る
-* 書き込みはImageMagickに委譲
+* PSD生成は行わず、PNGの分割のみを行う
+* レイヤー情報は扱わない（単一画像を分割）
 
 ### サイズ制限
 
@@ -66,11 +85,11 @@ name_splitter/
   core/
     job.py        # run_job(), ProgressEvent, CancelToken
     config.py     # Config dataclass + YAML load/save/validate
-    psd_read.py   # PSD読み取り（psd-tools）
+    image_read.py # 画像読み取り（Pillow）
     merge.py      # フォルダ統合・レイヤ抽出
     grid.py       # 均等セル座標・ページ順生成
     render.py     # 合成 → セル切り出し → PNG
-    im_wrap.py    # ImageMagick 呼び出し（PSD化）
+    im_wrap.py    # 互換用スタブ（現在は未使用）
     preview.py    # 低解像度プレビュー生成（GUI用）
   resources/
     default_config.yaml
@@ -80,7 +99,7 @@ name_splitter/
 
 ```python
 def run_job(
-    input_psd: str,
+    input_image: str,
     cfg: Config,
     *,
     out_dir: str | None = None,
@@ -100,7 +119,7 @@ def run_job(
 ```python
 @dataclass
 class ProgressEvent:
-    phase: str   # load_psd / merge_layers / render_pages / wrap_psd
+    phase: str   # load_image / grid / render_pages
     done: int
     total: int
     message: str = ""
@@ -110,8 +129,7 @@ class ProgressEvent:
 
 * `ConfigError`
 * `LimitExceededError`
-* `ImageMagickNotFoundError`
-* `PsdReadError`
+* `ImageReadError`
 * ルール未一致は warning 扱い
 
 ## 設定ファイル（config.yaml）
@@ -120,7 +138,7 @@ class ProgressEvent:
 version: 1
 
 input:
-  psd_path: ""
+  image_path: ""
 
 grid:
   rows: 4
@@ -130,26 +148,17 @@ grid:
   gutter_px: 0
 
 merge:
-  group_rules:
-    - group_name: "Text"
-      output_layer: "text"
-    - group_name: "Speech"
-      output_layer: "text"
-  layer_rules:
-    - layer_name: "Lines"
-      output_layer: "lines"
-    - layer_name: "BG"
-      output_layer: "bg"
-    - layer_name: "Notes"
-      output_layer: "notes"
+  group_rules: []
+  layer_rules: []
   include_hidden_layers: false
 
 output:
   out_dir: ""
   page_basename: "page_{page:03d}"
-  layer_stack: ["bg", "lines", "text", "notes"]
+  layer_stack: ["flat"]
   raster_ext: "png"
-  container: "psd"
+  container: "png"
+  layout: "layers"
 
 limits:
   max_dim_px: 30000
@@ -179,7 +188,7 @@ limits:
 
 ### 最低限の機能
 
-* PSD選択
+* 画像選択
 * 設定編集（rows/cols/order/margin/gutter/mergeルール）
 * プレビュー表示（縮小画像＋グリッド＋ページ番号）
 * Test page / Run / Cancel
@@ -189,13 +198,13 @@ limits:
 
 ```bash
 # 既定設定で実行
-tool.exe input.psd
+tool.exe input.png
 
 # 設定指定
-tool.exe input.psd --config config.yaml
+tool.exe input.png --config config.yaml
 
 # テスト（1ページのみ）
-tool.exe input.psd --page 1
+tool.exe input.png --page 1
 
 # GUI起動
 tool.exe --gui
@@ -205,7 +214,7 @@ tool.exe --gui
 
 1. grid.py
 2. config.py
-3. psd_read.py / merge.py
+3. image_read.py / merge.py
 4. render.py
 5. im_wrap.py
 6. cli.py
@@ -213,10 +222,9 @@ tool.exe --gui
 
 ## 初期仕様（決め打ち）
 
-* 出力レイヤー: bg / lines / text / notes（4枚）
-* Textフォルダ配下は全統合
+* 単一画像を分割してPNG出力
+* 出力レイヤー: flat（1枚）
 * max_dim 超過はエラー
-* PSB非対応（ネーム用途として十分）
 
 ## テスト用環境
 
@@ -227,8 +235,8 @@ tool.exe --gui
 python tools/create_test_env.py
 ```
 
-psd-tools / ImageMagick が未導入の環境では、`tools/run_smoke_test.py` により
-グリッド計算と `plan.json` 生成までのスモークテストを実行できます。
+Pillow が未導入の環境では、`tools/run_smoke_test.py` は実行できません。
+`tools/run_smoke_test.py` によりグリッド計算と `plan.json` 生成までのスモークテストを実行できます。
 
 ```bash
 python tools/run_smoke_test.py
