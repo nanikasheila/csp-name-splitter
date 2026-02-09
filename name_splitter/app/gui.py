@@ -101,9 +101,9 @@ def main() -> None:
         basic_color_field = template_fields["basic_color_field"]
         basic_alpha_field = template_fields["basic_alpha_field"]
         basic_line_width_field = template_fields["basic_line_width_field"]
-        grid_color_field = template_fields["grid_color_field"]
-        grid_alpha_field = template_fields["grid_alpha_field"]
-        grid_width_field = template_fields["grid_width_field"]
+        grid_color_field = common_fields["grid_color_field"]
+        grid_alpha_field = common_fields["grid_alpha_field"]
+        grid_width_field = common_fields["grid_width_field"]
         
         log_field = ui_elements["log_field"]
         progress_bar = ui_elements["progress_bar"]

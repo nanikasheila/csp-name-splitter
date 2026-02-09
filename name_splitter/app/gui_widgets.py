@@ -114,6 +114,11 @@ class WidgetBuilder:
         fields["gutter_field"] = ft.TextField(
             label="Gutter", value="0", width=90, keyboard_type=ft.KeyboardType.NUMBER
         )
+        fields["grid_color_field"] = ft.TextField(
+            label="Grid color", value="#FF5030", width=110
+        )
+        fields["grid_alpha_field"] = ft.TextField(label="Alpha", value="170", width=90)
+        fields["grid_width_field"] = ft.TextField(label="Width px", value="1", width=90)
         
         # -- Margin (4 directions + unit) --
         fields["margin_unit_field"] = ft.Dropdown(
@@ -241,13 +246,6 @@ class WidgetBuilder:
         fields["basic_line_width_field"] = ft.TextField(
             label="Line px", value="2", width=90
         )
-        
-        # -- Grid visual --
-        fields["grid_color_field"] = ft.TextField(
-            label="Grid color", value="#FF5030", width=110
-        )
-        fields["grid_alpha_field"] = ft.TextField(label="Alpha", value="170", width=90)
-        fields["grid_width_field"] = ft.TextField(label="Width px", value="1", width=90)
         
         return fields
     
