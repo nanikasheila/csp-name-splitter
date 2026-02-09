@@ -28,6 +28,17 @@ from name_splitter.core.template import (
     parse_hex_color,
 )
 from name_splitter.app.gui_state import GuiState
+from name_splitter.app.gui_types import (
+    TextField,
+    Dropdown,
+    Checkbox,
+    Text,
+    ProgressBar,
+    Image,
+    Button,
+    Page,
+    Clipboard,
+)
 from name_splitter.app.gui_utils import (
     PageSizeParams,
     GridConfigParams,
@@ -49,76 +60,76 @@ from name_splitter.app.gui_utils import (
 
 @dataclass
 class GuiWidgets:
-    """References to all GUI widgets."""
+    """References to all GUI widgets with type-safe definitions."""
     
     # Configuration
-    config_field: Any
+    config_field: TextField
     
     # Page size and DPI
-    page_size_field: Any
-    orientation_field: Any
-    dpi_field: Any
-    custom_size_unit_field: Any
-    custom_width_field: Any
-    custom_height_field: Any
-    size_info_text: Any
+    page_size_field: Dropdown
+    orientation_field: Dropdown
+    dpi_field: TextField
+    custom_size_unit_field: Dropdown
+    custom_width_field: TextField
+    custom_height_field: TextField
+    size_info_text: Text
     
     # Grid settings
-    rows_field: Any
-    cols_field: Any
-    order_field: Any
-    gutter_unit_field: Any
-    gutter_field: Any
+    rows_field: TextField
+    cols_field: TextField
+    order_field: Dropdown
+    gutter_unit_field: Dropdown
+    gutter_field: TextField
     
     # Margin settings
-    margin_unit_field: Any
-    margin_top_field: Any
-    margin_bottom_field: Any
-    margin_left_field: Any
-    margin_right_field: Any
+    margin_unit_field: Dropdown
+    margin_top_field: TextField
+    margin_bottom_field: TextField
+    margin_left_field: TextField
+    margin_right_field: TextField
     
     # Image split tab
-    input_field: Any
-    out_dir_field: Any
-    test_page_field: Any
+    input_field: TextField
+    out_dir_field: TextField
+    test_page_field: TextField
     
     # Template tab
-    template_out_field: Any
-    draw_finish_field: Any
-    finish_size_mode_field: Any
-    finish_width_field: Any
-    finish_height_field: Any
-    finish_offset_x_field: Any
-    finish_offset_y_field: Any
-    finish_color_field: Any
-    finish_alpha_field: Any
-    finish_line_width_field: Any
-    draw_basic_field: Any
-    basic_size_mode_field: Any
-    basic_width_field: Any
-    basic_height_field: Any
-    basic_offset_x_field: Any
-    basic_offset_y_field: Any
-    basic_color_field: Any
-    basic_alpha_field: Any
-    basic_line_width_field: Any
-    grid_color_field: Any
-    grid_alpha_field: Any
-    grid_width_field: Any
+    template_out_field: TextField
+    draw_finish_field: Checkbox
+    finish_size_mode_field: Dropdown
+    finish_width_field: TextField
+    finish_height_field: TextField
+    finish_offset_x_field: TextField
+    finish_offset_y_field: TextField
+    finish_color_field: TextField
+    finish_alpha_field: TextField
+    finish_line_width_field: TextField
+    draw_basic_field: Checkbox
+    basic_size_mode_field: Dropdown
+    basic_width_field: TextField
+    basic_height_field: TextField
+    basic_offset_x_field: TextField
+    basic_offset_y_field: TextField
+    basic_color_field: TextField
+    basic_alpha_field: TextField
+    basic_line_width_field: TextField
+    grid_color_field: TextField
+    grid_alpha_field: TextField
+    grid_width_field: TextField
     
     # UI elements
-    log_field: Any
-    progress_bar: Any
-    status_text: Any
-    preview_image: Any
-    run_btn: Any
-    cancel_btn: Any
+    log_field: TextField
+    progress_bar: ProgressBar
+    status_text: Text
+    preview_image: Image
+    run_btn: Button
+    cancel_btn: Button
 
 
 class GuiHandlers:
     """Event handlers and helper methods for CSP Name Splitter GUI."""
     
-    def __init__(self, widgets: GuiWidgets, state: GuiState, page: Any, clipboard: Any):
+    def __init__(self, widgets: GuiWidgets, state: GuiState, page: Page, clipboard: Clipboard):
         """Initialize handlers with dependencies.
         
         Args:

@@ -5,7 +5,19 @@ all GUI widgets (TextFields, Dropdowns, Buttons, etc.) and layout structures.
 """
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:
+    from name_splitter.app.gui_types import (
+        TextField,
+        Dropdown,
+        Checkbox,
+        Text,
+        ProgressBar,
+        Image,
+        InteractiveViewer,
+        Widget,
+    )
 
 # TRANSPARENT_PNG_BASE64 for preview image
 TRANSPARENT_PNG_BASE64 = (
@@ -17,7 +29,7 @@ TRANSPARENT_PNG_BASE64 = (
 class WidgetBuilder:
     """Builds all GUI widgets and layout structures for CSP Name Splitter."""
     
-    def __init__(self, ft: Any):
+    def __init__(self, ft: any):  # type: ignore
         """Initialize WidgetBuilder with Flet module.
         
         Args:
@@ -25,7 +37,7 @@ class WidgetBuilder:
         """
         self.ft = ft
     
-    def create_common_fields(self) -> dict[str, Any]:
+    def create_common_fields(self) -> dict[str, TextField | Dropdown | Text]:
         """Create common fields: config, page size, DPI, grid, margin.
         
         Returns:
@@ -145,7 +157,7 @@ class WidgetBuilder:
         
         return fields
     
-    def create_image_split_fields(self) -> dict[str, Any]:
+    def create_image_split_fields(self) -> dict[str, TextField]:
         """Create Image Split tab fields.
         
         Returns:
@@ -164,7 +176,7 @@ class WidgetBuilder:
         
         return fields
     
-    def create_template_fields(self) -> dict[str, Any]:
+    def create_template_fields(self) -> dict[str, TextField | Dropdown | Checkbox]:
         """Create Template tab fields (Finish, Basic, Grid visual).
         
         Returns:
@@ -249,7 +261,7 @@ class WidgetBuilder:
         
         return fields
     
-    def create_ui_elements(self) -> dict[str, Any]:
+    def create_ui_elements(self) -> dict[str, TextField | ProgressBar | Text | Image | InteractiveViewer]:
         """Create common UI elements: log, progress, status, preview.
         
         Returns:
@@ -280,8 +292,8 @@ class WidgetBuilder:
         return elements
     
     def build_common_settings_area(
-        self, fields: dict[str, Any], pick_config: Any
-    ) -> Any:
+        self, fields: dict[str, TextField | Dropdown | Text], pick_config: Callable[[any], None]  # type: ignore
+    ) -> Widget:
         """Build common settings area (config, page size, grid, margin).
         
         Args:
@@ -368,12 +380,12 @@ class WidgetBuilder:
     
     def build_tab_image(
         self,
-        fields: dict[str, Any],
-        run_btn: Any,
-        cancel_btn: Any,
-        pick_input: Any,
-        pick_out_dir: Any,
-    ) -> Any:
+        fields: dict[str, TextField],
+        run_btn: Widget,
+        cancel_btn: Widget,
+        pick_input: Callable[[any], None],  # type: ignore
+        pick_out_dir: Callable[[any], None],  # type: ignore
+    ) -> Widget:
         """Build Image Split tab content.
         
         Args:
@@ -414,10 +426,10 @@ class WidgetBuilder:
     
     def build_tab_template(
         self,
-        fields: dict[str, Any],
-        tmpl_btn: Any,
-        pick_template_out: Any,
-    ) -> Any:
+        fields: dict[str, TextField | Dropdown | Checkbox],
+        tmpl_btn: Widget,
+        pick_template_out: Callable[[any], None],  # type: ignore
+    ) -> Widget:
         """Build Template tab content.
         
         Args:
