@@ -28,9 +28,25 @@ from name_splitter.core.preview import build_preview_png
 from name_splitter.core.template import (
     TemplateStyle,
     build_template_preview_png,
-    compute_page_size_px as template_compute_page_size_px,
     generate_template_png,
     parse_hex_color,
+)
+from name_splitter.app.gui_utils import (
+    PageSizeParams,
+    GridConfigParams,
+    TemplateStyleParams,
+    FrameSizeParams,
+    parse_int,
+    parse_float,
+    px_to_mm,
+    mm_to_px,
+    convert_margin_to_px,
+    convert_unit_value,
+    compute_page_size_px as compute_page_size_px_impl,
+    compute_canvas_size_px as compute_canvas_size_px_impl,
+    compute_frame_size_mm as compute_frame_size_mm_impl,
+    build_grid_config as build_grid_config_from_params,
+    build_template_style as build_template_style_from_params,
 )
 
 TRANSPARENT_PNG_BASE64 = (
@@ -250,160 +266,106 @@ def main() -> None:
             except Exception:
                 pass
 
-        def parse_int(val: str, label: str) -> int:
-            try:
-                return int(val)
-            except ValueError as exc:
-                raise ValueError(f"{label} must be an integer") from exc
-
-        def parse_float(val: str, label: str) -> float:
-            try:
-                return float(val)
-            except ValueError as exc:
-                raise ValueError(f"{label} must be a number") from exc
-
-        # -- Margin換算（mm→px） --
-        def convert_margin_to_px(val_str: str, unit: str, dpi_val: int) -> int:
-            """Marginをpxに換算。unitが'mm'の場合はDPIから計算、'px'ならそのまま"""
-            val = parse_float(val_str or "0", "Margin")
-            if unit == "mm":
-                return max(0, int(round(val * dpi_val / 25.4)))
-            return max(0, int(val))
+        # parse_int, parse_float, convert_margin_to_px は gui_utils からインポート
 
         def build_grid_config() -> GridConfig:
-            rows = parse_int(rows_field.value or "0", "Rows")
-            cols = parse_int(cols_field.value or "0", "Cols")
-            order = order_field.value or "rtl_ttb"
-            margin_unit = margin_unit_field.value or "px"
-            gutter_unit = gutter_unit_field.value or "px"
-            dpi = parse_int(dpi_field.value or "300", "DPI")
-
-            m_top = convert_margin_to_px(margin_top_field.value, margin_unit, dpi)
-            m_bottom = convert_margin_to_px(margin_bottom_field.value, margin_unit, dpi)
-            m_left = convert_margin_to_px(margin_left_field.value, margin_unit, dpi)
-            m_right = convert_margin_to_px(margin_right_field.value, margin_unit, dpi)
-            gutter = convert_margin_to_px(gutter_field.value, gutter_unit, dpi)
-
+            """UIフィールドからGridConfigを構築（gui_utilsを使用）。"""
             page_w_px, page_h_px = compute_page_px()
-            page_size_name = page_size_field.value or "A4"
-            orientation = orientation_field.value or "portrait"
-            page_size_unit = custom_size_unit_field.value or "px"
-
-            return GridConfig(
-                rows=rows,
-                cols=cols,
-                order=order,
-                margin_px=max(m_top, m_bottom, m_left, m_right),  # Legacy compat
-                margin_top_px=m_top,
-                margin_bottom_px=m_bottom,
-                margin_left_px=m_left,
-                margin_right_px=m_right,
-                gutter_px=gutter,
-                gutter_unit=gutter_unit,
-                margin_unit=margin_unit,
-                dpi=dpi,
-                page_size_name=page_size_name,
-                orientation=orientation,
+            params = GridConfigParams(
+                rows=rows_field.value or "0",
+                cols=cols_field.value or "0",
+                order=order_field.value or "rtl_ttb",
+                margin_top=margin_top_field.value or "0",
+                margin_bottom=margin_bottom_field.value or "0",
+                margin_left=margin_left_field.value or "0",
+                margin_right=margin_right_field.value or "0",
+                margin_unit=margin_unit_field.value or "px",
+                gutter=gutter_field.value or "0",
+                gutter_unit=gutter_unit_field.value or "px",
+                dpi=dpi_field.value or "300",
+                page_size_name=page_size_field.value or "A4",
+                orientation=orientation_field.value or "portrait",
                 page_width_px=page_w_px,
                 page_height_px=page_h_px,
-                page_size_unit=page_size_unit,
+                page_size_unit=custom_size_unit_field.value or "px",
             )
+            return build_grid_config_from_params(params)
 
         last_size: dict[str, int] = {"w": 0, "h": 0}
 
         def compute_page_px() -> tuple[int, int]:
-            size_choice = page_size_field.value or "A4"
-            if size_choice == "Custom":
-                if custom_width_field.value and custom_height_field.value:
-                    unit = custom_size_unit_field.value or "px"
-                    dpi = parse_int(dpi_field.value or "300", "DPI")
-                    if unit == "mm":
-                        w_mm = float(custom_width_field.value)
-                        h_mm = float(custom_height_field.value)
-                        w = int(w_mm * dpi / 25.4)
-                        h = int(h_mm * dpi / 25.4)
-                    else:
-                        w = parse_int(custom_width_field.value, "Width")
-                        h = parse_int(custom_height_field.value, "Height")
-                    last_size.update(w=w, h=h)
-                    return w, h
-                if last_size["w"] > 0 and last_size["h"] > 0:
-                    return last_size["w"], last_size["h"]
-                dpi = parse_int(dpi_field.value or "0", "DPI")
-                ori = orientation_field.value or "portrait"
-                w, h = template_compute_page_size_px("A4", dpi, ori)
-                last_size.update(w=w, h=h)
-                return w, h
-            dpi = parse_int(dpi_field.value or "0", "DPI")
-            ori = orientation_field.value or "portrait"
-            w, h = template_compute_page_size_px(size_choice, dpi, ori)
+            """UIフィールドからページサイズ（ピクセル）を計算（gui_utilsを使用）。"""
+            params = PageSizeParams(
+                page_size_name=page_size_field.value or "A4",
+                orientation=orientation_field.value or "portrait",
+                dpi=parse_int(dpi_field.value or "300", "DPI"),
+                custom_width=custom_width_field.value,
+                custom_height=custom_height_field.value,
+                custom_unit=custom_size_unit_field.value or "px",
+            )
+            w, h = compute_page_size_px_impl(params, last_size["w"], last_size["h"])
             last_size.update(w=w, h=h)
             return w, h
 
         def compute_canvas_size_px() -> tuple[int, int]:
+            """UIフィールドからキャンバスサイズ（ピクセル）を計算（gui_utilsを使用）。"""
             pw, ph = compute_page_px()
             g = build_grid_config()
-            cw = g.margin_left_px + g.margin_right_px + g.cols * pw + (g.cols - 1) * g.gutter_px
-            ch = g.margin_top_px + g.margin_bottom_px + g.rows * ph + (g.rows - 1) * g.gutter_px
-            return cw, ch
+            return compute_canvas_size_px_impl(g, pw, ph)
 
         def compute_page_size_mm() -> tuple[float, float]:
+            """UIフィールドからページサイズ（ミリメートル）を計算（gui_utilsを使用）。"""
             dpi = parse_int(dpi_field.value or "0", "DPI")
             if dpi <= 0:
                 raise ValueError("DPI must be positive")
             wpx, hpx = compute_page_px()
-            return wpx * 25.4 / dpi, hpx * 25.4 / dpi
+            return px_to_mm(wpx, dpi), px_to_mm(hpx, dpi)
 
-        def compute_frame_size_mm(mode: str, w_val: str, h_val: str) -> tuple[float, float]:
-            mode = mode or "Use per-page size"
-            dpi = parse_int(dpi_field.value or "0", "DPI")
-            if mode == "Use per-page size":
-                return compute_page_size_mm()
-            if mode in {"A4", "A5", "B4", "B5"}:
-                ori = orientation_field.value or "portrait"
-                wpx, hpx = template_compute_page_size_px(mode, dpi, ori)
-                return wpx * 25.4 / dpi, hpx * 25.4 / dpi
-            if mode == "Custom px":
-                wpx = parse_int(w_val or "0", "Width px")
-                hpx = parse_int(h_val or "0", "Height px")
-                return wpx * 25.4 / dpi, hpx * 25.4 / dpi
-            return parse_float(w_val or "0", "Width mm"), parse_float(h_val or "0", "Height mm")
+        def compute_frame_size_mm_ui(mode: str, w_val: str, h_val: str) -> tuple[float, float]:
+            """UIフィールドからフレームサイズ（ミリメートル）を計算（gui_utilsを使用）。"""
+            pw, ph = compute_page_px()
+            params = FrameSizeParams(
+                mode=mode or "Use per-page size",
+                dpi=parse_int(dpi_field.value or "0", "DPI"),
+                orientation=orientation_field.value or "portrait",
+                width_value=w_val,
+                height_value=h_val,
+                page_width_px=pw,
+                page_height_px=ph,
+            )
+            return compute_frame_size_mm_impl(params)
 
         def build_template_style() -> TemplateStyle:
-            ga = parse_int(grid_alpha_field.value or "0", "Grid alpha")
-            fa = parse_int(finish_alpha_field.value or "0", "Finish alpha")
-            ba = parse_int(basic_alpha_field.value or "0", "Basic alpha")
-            g_col = parse_hex_color(grid_color_field.value or "#FF5030", ga)
-            f_col = parse_hex_color(finish_color_field.value or "#FFFFFF", fa)
-            b_col = parse_hex_color(basic_color_field.value or "#00AAFF", ba)
-            fwmm, fhmm = compute_frame_size_mm(
-                finish_size_mode_field.value or "Use per-page size",
-                finish_width_field.value,
-                finish_height_field.value,
-            )
-            bwmm, bhmm = compute_frame_size_mm(
-                basic_size_mode_field.value or "Use per-page size",
-                basic_width_field.value,
-                basic_height_field.value,
-            )
-            return TemplateStyle(
-                grid_color=g_col,
-                grid_width=parse_int(grid_width_field.value or "0", "Grid width"),
-                finish_color=f_col,
-                finish_width=parse_int(finish_line_width_field.value or "0", "Finish line width"),
-                finish_width_mm=fwmm,
-                finish_height_mm=fhmm,
-                finish_offset_x_mm=parse_float(finish_offset_x_field.value or "0", "Finish offset X"),
-                finish_offset_y_mm=parse_float(finish_offset_y_field.value or "0", "Finish offset Y"),
+            """UIフィールドからTemplateStyleを構築（gui_utilsを使用）。"""
+            pw, ph = compute_page_px()
+            params = TemplateStyleParams(
+                grid_color=grid_color_field.value or "#FF5030",
+                grid_alpha=grid_alpha_field.value or "0",
+                grid_width=grid_width_field.value or "0",
+                finish_color=finish_color_field.value or "#FFFFFF",
+                finish_alpha=finish_alpha_field.value or "0",
+                finish_line_width=finish_line_width_field.value or "0",
+                finish_size_mode=finish_size_mode_field.value or "Use per-page size",
+                finish_width=finish_width_field.value or "",
+                finish_height=finish_height_field.value or "",
+                finish_offset_x=finish_offset_x_field.value or "0",
+                finish_offset_y=finish_offset_y_field.value or "0",
                 draw_finish=bool(draw_finish_field.value),
-                basic_color=b_col,
-                basic_width=parse_int(basic_line_width_field.value or "0", "Basic line width"),
-                basic_width_mm=bwmm,
-                basic_height_mm=bhmm,
-                basic_offset_x_mm=parse_float(basic_offset_x_field.value or "0", "Basic offset X"),
-                basic_offset_y_mm=parse_float(basic_offset_y_field.value or "0", "Basic offset Y"),
+                basic_color=basic_color_field.value or "#00AAFF",
+                basic_alpha=basic_alpha_field.value or "0",
+                basic_line_width=basic_line_width_field.value or "0",
+                basic_size_mode=basic_size_mode_field.value or "Use per-page size",
+                basic_width=basic_width_field.value or "",
+                basic_height=basic_height_field.value or "",
+                basic_offset_x=basic_offset_x_field.value or "0",
+                basic_offset_y=basic_offset_y_field.value or "0",
                 draw_basic=bool(draw_basic_field.value),
+                dpi=parse_int(dpi_field.value or "300", "DPI"),
+                orientation=orientation_field.value or "portrait",
+                page_width_px=pw,
+                page_height_px=ph,
             )
+            return build_template_style_from_params(params)
 
         def update_size_info(_: ft.ControlEvent | None = None) -> None:
             try:
@@ -442,7 +404,7 @@ def main() -> None:
                 # Finish frame auto-fill
                 fm = finish_size_mode_field.value or "Use per-page size"
                 if fm in {"Use per-page size", "A4", "A5", "B4", "B5"}:
-                    fw, fh = compute_frame_size_mm(fm, "", "")
+                    fw, fh = compute_frame_size_mm_ui(fm, "", "")
                     finish_width_field.value = f"{fw:.2f}"
                     finish_height_field.value = f"{fh:.2f}"
                 if fm == "Custom mm" and (not finish_width_field.value or not finish_height_field.value):
@@ -457,7 +419,7 @@ def main() -> None:
                 # Basic frame auto-fill
                 bm = basic_size_mode_field.value or "Use per-page size"
                 if bm in {"Use per-page size", "A4", "A5", "B4", "B5"}:
-                    bw, bh = compute_frame_size_mm(bm, "", "")
+                    bw, bh = compute_frame_size_mm_ui(bm, "", "")
                     basic_width_field.value = f"{bw:.2f}"
                     basic_height_field.value = f"{bh:.2f}"
                 if bm == "Custom mm" and (not basic_width_field.value or not basic_height_field.value):
@@ -884,19 +846,10 @@ def main() -> None:
             
             dpi = parse_int(dpi_field.value or "300", "DPI")
             
-            # 各マージン値を換算
+            # 各マージン値を換算 (gui_utilsを使用)
             for fld in [margin_top_field, margin_bottom_field, margin_left_field, margin_right_field]:
                 if fld.value:
-                    try:
-                        val = float(fld.value)
-                        if old_unit == "px" and new_unit == "mm":
-                            # px → mm
-                            fld.value = f"{val * 25.4 / dpi:.2f}"
-                        elif old_unit == "mm" and new_unit == "px":
-                            # mm → px
-                            fld.value = str(int(val * dpi / 25.4))
-                    except ValueError:
-                        pass
+                    fld.value = convert_unit_value(fld.value, old_unit, new_unit, dpi)
             
             # 現在の単位を更新
             current_margin_unit["unit"] = new_unit
@@ -917,30 +870,29 @@ def main() -> None:
                 return
             
             dpi = parse_int(dpi_field.value or "300", "DPI")
-            ori = orientation_field.value or "portrait"
             size_choice = page_size_field.value or "A4"
             
             # 現在のページサイズをpxで取得
             if size_choice == "Custom":
-                # Customの場合は既存の値を換算
+                # Customの場合は既存の値を換算 (gui_utilsを使用)
                 for fld in [custom_width_field, custom_height_field]:
                     if fld.value:
-                        try:
-                            val = float(fld.value)
-                            if old_unit == "px" and new_unit == "mm":
-                                # px → mm
-                                fld.value = f"{val * 25.4 / dpi:.2f}"
-                            elif old_unit == "mm" and new_unit == "px":
-                                # mm → px
-                                fld.value = str(int(val * dpi / 25.4))
-                        except ValueError:
-                            pass
+                        fld.value = convert_unit_value(fld.value, old_unit, new_unit, dpi)
             else:
                 # A4, B5などのプリセットサイズの場合、px値を計算して表示
-                w_px, h_px = template_compute_page_size_px(size_choice, dpi, ori)
+                # compute_page_px()を呼ぶと現在の値が使われるので、直接計算
+                params = PageSizeParams(
+                    page_size_name=size_choice,
+                    orientation=orientation_field.value or "portrait",
+                    dpi=dpi,
+                    custom_width=None,
+                    custom_height=None,
+                    custom_unit="px",
+                )
+                w_px, h_px = compute_page_size_px_impl(params, 0, 0)
                 if new_unit == "mm":
-                    custom_width_field.value = f"{w_px * 25.4 / dpi:.2f}"
-                    custom_height_field.value = f"{h_px * 25.4 / dpi:.2f}"
+                    custom_width_field.value = f"{px_to_mm(w_px, dpi):.2f}"
+                    custom_height_field.value = f"{px_to_mm(h_px, dpi):.2f}"
                 else:
                     custom_width_field.value = str(w_px)
                     custom_height_field.value = str(h_px)
@@ -965,18 +917,9 @@ def main() -> None:
             
             dpi = parse_int(dpi_field.value or "300", "DPI")
             
-            # gutter値を換算
+            # gutter値を換算 (gui_utilsを使用)
             if gutter_field.value:
-                try:
-                    val = float(gutter_field.value)
-                    if old_unit == "px" and new_unit == "mm":
-                        # px → mm
-                        gutter_field.value = f"{val * 25.4 / dpi:.2f}"
-                    elif old_unit == "mm" and new_unit == "px":
-                        # mm → px
-                        gutter_field.value = str(int(val * dpi / 25.4))
-                except ValueError:
-                    pass
+                gutter_field.value = convert_unit_value(gutter_field.value, old_unit, new_unit, dpi)
             
             # 現在の単位を更新
             current_gutter_unit["unit"] = new_unit

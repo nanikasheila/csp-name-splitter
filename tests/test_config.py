@@ -3,7 +3,8 @@ from pathlib import Path
 import tempfile
 import os
 
-from name_splitter.core.config import GridConfig, mm_to_px, load_config
+from name_splitter.core.config import GridConfig, load_config
+from name_splitter.app.gui_utils import mm_to_px
 
 
 class ConfigTests(unittest.TestCase):
@@ -49,17 +50,17 @@ class ConfigTests(unittest.TestCase):
             rows=2,
             cols=2,
             margin_px=0,
-            margin_top=5,
-            margin_bottom=10,
-            margin_left=15,
-            margin_right=20,
+            margin_top_px=5,
+            margin_bottom_px=10,
+            margin_left_px=15,
+            margin_right_px=20,
             margin_unit="mm"
         )
         self.assertEqual(grid.margin_unit, "mm")
-        self.assertEqual(grid.margin_top, 5)
-        self.assertEqual(grid.margin_bottom, 10)
-        self.assertEqual(grid.margin_left, 15)
-        self.assertEqual(grid.margin_right, 20)
+        self.assertEqual(grid.margin_top_px, 5)
+        self.assertEqual(grid.margin_bottom_px, 10)
+        self.assertEqual(grid.margin_left_px, 15)
+        self.assertEqual(grid.margin_right_px, 20)
 
     def test_load_config_with_margin_unit(self) -> None:
         """Test loading config file with margin_unit field."""
@@ -72,10 +73,10 @@ grid:
   cols: 3
   order: ltr_ttb
   margin_px: 5
-  margin_top: 10
-  margin_bottom: 8
-  margin_left: 6
-  margin_right: 7
+  margin_top_px: 10
+  margin_bottom_px: 8
+  margin_left_px: 6
+  margin_right_px: 7
   margin_unit: mm
   gutter_px: 2
 merge:
@@ -103,10 +104,10 @@ limits:
             self.assertEqual(config.grid.rows, 3)
             self.assertEqual(config.grid.cols, 3)
             self.assertEqual(config.grid.margin_px, 5)
-            self.assertEqual(config.grid.margin_top, 10)
-            self.assertEqual(config.grid.margin_bottom, 8)
-            self.assertEqual(config.grid.margin_left, 6)
-            self.assertEqual(config.grid.margin_right, 7)
+            self.assertEqual(config.grid.margin_top_px, 10)
+            self.assertEqual(config.grid.margin_bottom_px, 8)
+            self.assertEqual(config.grid.margin_left_px, 6)
+            self.assertEqual(config.grid.margin_right_px, 7)
             self.assertEqual(config.grid.margin_unit, "mm")
             self.assertEqual(config.grid.gutter_px, 2)
         finally:
