@@ -219,6 +219,69 @@ class GuiHandlers:
         )
         return build_template_style_from_params(params)
     
+    def _update_size_display(self, gc: GridConfig, pw: int, ph: int, cw: int, ch: int, wmm: float, hmm: float) -> None:
+        """Update size information display text."""
+        self.w.common.size_info_text.value = (
+            f"Page: {pw}×{ph} px ({wmm:.1f}×{hmm:.1f} mm)  |  "
+            f"Canvas: {cw}×{ch} px  |  Grid: {gc.rows}×{gc.cols}"
+        )
+        self.w.common.size_info_text.color = None
+    
+    def _update_custom_fields(self, pw: int, ph: int, wmm: float, hmm: float) -> None:
+        """Update custom page size fields based on current settings."""
+        is_custom = self.w.common.page_size_field.value == "Custom"
+        self.w.common.custom_width_field.disabled = not is_custom
+        self.w.common.custom_height_field.disabled = not is_custom
+        
+        page_size_unit = self.w.common.custom_size_unit_field.value or "px"
+        if is_custom and (not self.w.common.custom_width_field.value or not self.w.common.custom_height_field.value):
+            if page_size_unit == "mm":
+                self.w.common.custom_width_field.value = f"{wmm:.2f}"
+                self.w.common.custom_height_field.value = f"{hmm:.2f}"
+            else:
+                self.w.common.custom_width_field.value = str(pw)
+                self.w.common.custom_height_field.value = str(ph)
+        if not is_custom:
+            # Display preset size in current unit
+            if page_size_unit == "mm":
+                self.w.common.custom_width_field.value = f"{wmm:.2f}"
+                self.w.common.custom_height_field.value = f"{hmm:.2f}"
+            else:
+                self.w.common.custom_width_field.value = str(pw)
+                self.w.common.custom_height_field.value = str(ph)
+    
+    def _update_finish_frame_fields(self, pw: int, ph: int, wmm: float, hmm: float) -> None:
+        """Update finish frame fields with auto-fill values."""
+        fm = self.w.template.finish_size_mode_field.value or "Use per-page size"
+        if fm in {"Use per-page size", "A4", "A5", "B4", "B5"}:
+            fw, fh = self.compute_frame_size_mm_ui(fm, "", "")
+            self.w.template.finish_width_field.value = f"{fw:.2f}"
+            self.w.template.finish_height_field.value = f"{fh:.2f}"
+        if fm == "Custom mm" and (not self.w.template.finish_width_field.value or not self.w.template.finish_height_field.value):
+            self.w.template.finish_width_field.value = f"{wmm:.2f}"
+            self.w.template.finish_height_field.value = f"{hmm:.2f}"
+        if fm == "Custom px" and (not self.w.template.finish_width_field.value or not self.w.template.finish_height_field.value):
+            self.w.template.finish_width_field.value = str(pw)
+            self.w.template.finish_height_field.value = str(ph)
+        self.w.template.finish_width_field.disabled = not fm.startswith("Custom")
+        self.w.template.finish_height_field.disabled = not fm.startswith("Custom")
+    
+    def _update_basic_frame_fields(self, pw: int, ph: int, wmm: float, hmm: float) -> None:
+        """Update basic frame fields with auto-fill values."""
+        bm = self.w.template.basic_size_mode_field.value or "Use per-page size"
+        if bm in {"Use per-page size", "A4", "A5", "B4", "B5"}:
+            bw, bh = self.compute_frame_size_mm_ui(bm, "", "")
+            self.w.template.basic_width_field.value = f"{bw:.2f}"
+            self.w.template.basic_height_field.value = f"{bh:.2f}"
+        if bm == "Custom mm" and (not self.w.template.basic_width_field.value or not self.w.template.basic_height_field.value):
+            self.w.template.basic_width_field.value = f"{max(0.0, wmm - 20):.2f}"
+            self.w.template.basic_height_field.value = f"{max(0.0, hmm - 20):.2f}"
+        if bm == "Custom px" and (not self.w.template.basic_width_field.value or not self.w.template.basic_height_field.value):
+            self.w.template.basic_width_field.value = str(max(0, pw - 200))
+            self.w.template.basic_height_field.value = str(max(0, ph - 200))
+        self.w.template.basic_width_field.disabled = not bm.startswith("Custom")
+        self.w.template.basic_height_field.disabled = not bm.startswith("Custom")
+    
     def update_size_info(self, _: Any = None) -> None:
         """Update size information text and related UI elements."""
         try:
@@ -226,63 +289,11 @@ class GuiHandlers:
             pw, ph = self.compute_page_px()
             cw, ch = self.compute_canvas_size_px()
             wmm, hmm = self.compute_page_size_mm()
-            self.w.common.size_info_text.value = (
-                f"Page: {pw}×{ph} px ({wmm:.1f}×{hmm:.1f} mm)  |  "
-                f"Canvas: {cw}×{ch} px  |  Grid: {gc.rows}×{gc.cols}"
-            )
-            self.w.common.size_info_text.color = None
-
-            is_custom = self.w.common.page_size_field.value == "Custom"
-            self.w.common.custom_width_field.disabled = not is_custom
-            self.w.common.custom_height_field.disabled = not is_custom
             
-            # Custom以外でもページサイズを表示（現在の単位に応じて）
-            page_size_unit = self.w.common.custom_size_unit_field.value or "px"
-            if is_custom and (not self.w.common.custom_width_field.value or not self.w.common.custom_height_field.value):
-                if page_size_unit == "mm":
-                    self.w.common.custom_width_field.value = f"{wmm:.2f}"
-                    self.w.common.custom_height_field.value = f"{hmm:.2f}"
-                else:
-                    self.w.common.custom_width_field.value = str(pw)
-                    self.w.common.custom_height_field.value = str(ph)
-            if not is_custom:
-                # プリセットサイズでも現在の単位で表示
-                if page_size_unit == "mm":
-                    self.w.common.custom_width_field.value = f"{wmm:.2f}"
-                    self.w.common.custom_height_field.value = f"{hmm:.2f}"
-                else:
-                    self.w.common.custom_width_field.value = str(pw)
-                    self.w.common.custom_height_field.value = str(ph)
-
-            # Finish frame auto-fill
-            fm = self.w.template.finish_size_mode_field.value or "Use per-page size"
-            if fm in {"Use per-page size", "A4", "A5", "B4", "B5"}:
-                fw, fh = self.compute_frame_size_mm_ui(fm, "", "")
-                self.w.template.finish_width_field.value = f"{fw:.2f}"
-                self.w.template.finish_height_field.value = f"{fh:.2f}"
-            if fm == "Custom mm" and (not self.w.template.finish_width_field.value or not self.w.template.finish_height_field.value):
-                self.w.template.finish_width_field.value = f"{wmm:.2f}"
-                self.w.template.finish_height_field.value = f"{hmm:.2f}"
-            if fm == "Custom px" and (not self.w.template.finish_width_field.value or not self.w.template.finish_height_field.value):
-                self.w.template.finish_width_field.value = str(pw)
-                self.w.template.finish_height_field.value = str(ph)
-            self.w.template.finish_width_field.disabled = not fm.startswith("Custom")
-            self.w.template.finish_height_field.disabled = not fm.startswith("Custom")
-
-            # Basic frame auto-fill
-            bm = self.w.template.basic_size_mode_field.value or "Use per-page size"
-            if bm in {"Use per-page size", "A4", "A5", "B4", "B5"}:
-                bw, bh = self.compute_frame_size_mm_ui(bm, "", "")
-                self.w.template.basic_width_field.value = f"{bw:.2f}"
-                self.w.template.basic_height_field.value = f"{bh:.2f}"
-            if bm == "Custom mm" and (not self.w.template.basic_width_field.value or not self.w.template.basic_height_field.value):
-                self.w.template.basic_width_field.value = f"{max(0.0, wmm - 20):.2f}"
-                self.w.template.basic_height_field.value = f"{max(0.0, hmm - 20):.2f}"
-            if bm == "Custom px" and (not self.w.template.basic_width_field.value or not self.w.template.basic_height_field.value):
-                self.w.template.basic_width_field.value = str(max(0, pw - 200))
-                self.w.template.basic_height_field.value = str(max(0, ph - 200))
-            self.w.template.basic_width_field.disabled = not bm.startswith("Custom")
-            self.w.template.basic_height_field.disabled = not bm.startswith("Custom")
+            self._update_size_display(gc, pw, ph, cw, ch, wmm, hmm)
+            self._update_custom_fields(pw, ph, wmm, hmm)
+            self._update_finish_frame_fields(pw, ph, wmm, hmm)
+            self._update_basic_frame_fields(pw, ph, wmm, hmm)
         except Exception as exc:  # noqa: BLE001
             self.w.common.size_info_text.value = f"Size error: {exc}"
             self.w.common.size_info_text.color = "red"
@@ -294,83 +305,99 @@ class GuiHandlers:
             return "Loaded config", load_config(self.w.common.config_field.value)
         return "Loaded default config", load_default_config()
     
+    def _apply_dpi_to_ui(self, cfg: Any) -> None:
+        """Apply DPI setting from config to UI."""
+        if hasattr(cfg.grid, "dpi") and cfg.grid.dpi > 0:
+            self.w.common.dpi_field.value = str(cfg.grid.dpi)
+    
+    def _apply_page_size_to_ui(self, cfg: Any) -> None:
+        """Apply page size settings from config to UI."""
+        # Page size name & orientation
+        if hasattr(cfg.grid, "page_size_name"):
+            self.w.common.page_size_field.value = cfg.grid.page_size_name
+        if hasattr(cfg.grid, "orientation"):
+            self.w.common.orientation_field.value = cfg.grid.orientation
+        
+        # Custom page size
+        if hasattr(cfg.grid, "page_width_px") and hasattr(cfg.grid, "page_height_px"):
+            w, h = cfg.grid.page_width_px, cfg.grid.page_height_px
+            if w > 0 and h > 0:
+                unit = cfg.grid.page_size_unit if hasattr(cfg.grid, "page_size_unit") else "px"
+                self.w.common.custom_size_unit_field.value = unit
+                if unit == "mm":
+                    dpi = cfg.grid.dpi
+                    self.w.common.custom_width_field.value = f"{w * 25.4 / dpi:.1f}"
+                    self.w.common.custom_height_field.value = f"{h * 25.4 / dpi:.1f}"
+                else:
+                    self.w.common.custom_width_field.value = str(w)
+                    self.w.common.custom_height_field.value = str(h)
+                if self.w.common.page_size_field.value != "Custom":
+                    self.w.common.page_size_field.value = "Custom"
+    
+    def _apply_grid_settings_to_ui(self, cfg: Any) -> None:
+        """Apply grid settings from config to UI."""
+        self.w.common.rows_field.value = str(cfg.grid.rows)
+        self.w.common.cols_field.value = str(cfg.grid.cols)
+        self.w.common.order_field.value = cfg.grid.order
+    
+    def _apply_gutter_to_ui(self, cfg: Any) -> None:
+        """Apply gutter settings from config to UI."""
+        if hasattr(cfg.grid, "gutter_unit"):
+            self.w.common.gutter_unit_field.value = cfg.grid.gutter_unit
+        
+        # Convert gutter from px to UI unit
+        dpi = cfg.grid.dpi
+        gutter_unit = self.w.common.gutter_unit_field.value or "px"
+        if gutter_unit == "mm":
+            self.w.common.gutter_field.value = f"{cfg.grid.gutter_px * 25.4 / dpi:.2f}"
+        else:
+            self.w.common.gutter_field.value = str(cfg.grid.gutter_px)
+    
+    def _apply_margins_to_ui(self, cfg: Any) -> None:
+        """Apply margin settings from config to UI."""
+        if hasattr(cfg.grid, "margin_unit"):
+            self.w.common.margin_unit_field.value = cfg.grid.margin_unit
+        
+        # Convert margins from px to UI unit
+        dpi = cfg.grid.dpi
+        unit = self.w.common.margin_unit_field.value or "px"
+        
+        if cfg.grid.margin_top_px or cfg.grid.margin_bottom_px or cfg.grid.margin_left_px or cfg.grid.margin_right_px:
+            # Individual margins
+            if unit == "mm":
+                self.w.common.margin_top_field.value = f"{cfg.grid.margin_top_px * 25.4 / dpi:.2f}"
+                self.w.common.margin_bottom_field.value = f"{cfg.grid.margin_bottom_px * 25.4 / dpi:.2f}"
+                self.w.common.margin_left_field.value = f"{cfg.grid.margin_left_px * 25.4 / dpi:.2f}"
+                self.w.common.margin_right_field.value = f"{cfg.grid.margin_right_px * 25.4 / dpi:.2f}"
+            else:
+                self.w.common.margin_top_field.value = str(cfg.grid.margin_top_px)
+                self.w.common.margin_bottom_field.value = str(cfg.grid.margin_bottom_px)
+                self.w.common.margin_left_field.value = str(cfg.grid.margin_left_px)
+                self.w.common.margin_right_field.value = str(cfg.grid.margin_right_px)
+        else:
+            # Legacy uniform margin
+            if unit == "mm":
+                val_mm = f"{cfg.grid.margin_px * 25.4 / dpi:.2f}"
+                self.w.common.margin_top_field.value = val_mm
+                self.w.common.margin_bottom_field.value = val_mm
+                self.w.common.margin_left_field.value = val_mm
+                self.w.common.margin_right_field.value = val_mm
+            else:
+                val_px = str(cfg.grid.margin_px)
+                self.w.common.margin_top_field.value = val_px
+                self.w.common.margin_bottom_field.value = val_px
+                self.w.common.margin_left_field.value = val_px
+                self.w.common.margin_right_field.value = val_px
+    
     def apply_config_to_ui(self, cfg: Any) -> None:
         """Apply loaded config to UI fields."""
         self.state.disable_auto_preview()  # Disable auto-update during config application
         try:
-            # DPI
-            if hasattr(cfg.grid, "dpi") and cfg.grid.dpi > 0:
-                self.w.common.dpi_field.value = str(cfg.grid.dpi)
-            
-            # Page size name & orientation
-            if hasattr(cfg.grid, "page_size_name"):
-                self.w.common.page_size_field.value = cfg.grid.page_size_name
-            if hasattr(cfg.grid, "orientation"):
-                self.w.common.orientation_field.value = cfg.grid.orientation
-            
-            # Custom page size
-            if hasattr(cfg.grid, "page_width_px") and hasattr(cfg.grid, "page_height_px"):
-                w, h = cfg.grid.page_width_px, cfg.grid.page_height_px
-                if w > 0 and h > 0:
-                    unit = cfg.grid.page_size_unit if hasattr(cfg.grid, "page_size_unit") else "px"
-                    self.w.common.custom_size_unit_field.value = unit
-                    if unit == "mm":
-                        dpi = cfg.grid.dpi
-                        self.w.common.custom_width_field.value = f"{w * 25.4 / dpi:.1f}"
-                        self.w.common.custom_height_field.value = f"{h * 25.4 / dpi:.1f}"
-                    else:
-                        self.w.common.custom_width_field.value = str(w)
-                        self.w.common.custom_height_field.value = str(h)
-                    if self.w.common.page_size_field.value != "Custom":
-                        self.w.common.page_size_field.value = "Custom"
-            
-            # Grid settings
-            self.w.common.rows_field.value = str(cfg.grid.rows)
-            self.w.common.cols_field.value = str(cfg.grid.cols)
-            self.w.common.order_field.value = cfg.grid.order
-            
-            # Gutter unit
-            if hasattr(cfg.grid, "gutter_unit"):
-                self.w.common.gutter_unit_field.value = cfg.grid.gutter_unit
-            
-            # Gutter (stored as px in config, convert to UI unit)
-            dpi = cfg.grid.dpi
-            gutter_unit = self.w.common.gutter_unit_field.value or "px"
-            if gutter_unit == "mm":
-                self.w.common.gutter_field.value = f"{cfg.grid.gutter_px * 25.4 / dpi:.2f}"
-            else:
-                self.w.common.gutter_field.value = str(cfg.grid.gutter_px)
-            
-            # Margin unit
-            if hasattr(cfg.grid, "margin_unit"):
-                self.w.common.margin_unit_field.value = cfg.grid.margin_unit
-            
-            # Margin (stored as px in config, convert to UI unit)
-            unit = self.w.common.margin_unit_field.value or "px"
-            if cfg.grid.margin_top_px or cfg.grid.margin_bottom_px or cfg.grid.margin_left_px or cfg.grid.margin_right_px:
-                if unit == "mm":
-                    self.w.common.margin_top_field.value = f"{cfg.grid.margin_top_px * 25.4 / dpi:.2f}"
-                    self.w.common.margin_bottom_field.value = f"{cfg.grid.margin_bottom_px * 25.4 / dpi:.2f}"
-                    self.w.common.margin_left_field.value = f"{cfg.grid.margin_left_px * 25.4 / dpi:.2f}"
-                    self.w.common.margin_right_field.value = f"{cfg.grid.margin_right_px * 25.4 / dpi:.2f}"
-                else:
-                    self.w.common.margin_top_field.value = str(cfg.grid.margin_top_px)
-                    self.w.common.margin_bottom_field.value = str(cfg.grid.margin_bottom_px)
-                    self.w.common.margin_left_field.value = str(cfg.grid.margin_left_px)
-                    self.w.common.margin_right_field.value = str(cfg.grid.margin_right_px)
-            else:
-                # Legacy margin_px to all directions
-                if unit == "mm":
-                    val_mm = f"{cfg.grid.margin_px * 25.4 / dpi:.2f}"
-                    self.w.common.margin_top_field.value = val_mm
-                    self.w.common.margin_bottom_field.value = val_mm
-                    self.w.common.margin_left_field.value = val_mm
-                    self.w.common.margin_right_field.value = val_mm
-                else:
-                    self.w.common.margin_top_field.value = str(cfg.grid.margin_px)
-                    self.w.common.margin_bottom_field.value = str(cfg.grid.margin_px)
-                    self.w.common.margin_left_field.value = str(cfg.grid.margin_px)
-                    self.w.common.margin_right_field.value = str(cfg.grid.margin_px)
+            self._apply_dpi_to_ui(cfg)
+            self._apply_page_size_to_ui(cfg)
+            self._apply_grid_settings_to_ui(cfg)
+            self._apply_gutter_to_ui(cfg)
+            self._apply_margins_to_ui(cfg)
             
             # Update current units
             self.state.unit_state.margin_unit = self.w.common.margin_unit_field.value or "px"
