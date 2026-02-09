@@ -6,6 +6,7 @@ dynamic nature.
 """
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol, Any, Callable, Optional
 
 
@@ -106,3 +107,91 @@ Page = Any
 ControlEvent = Any
 FilePicker = Any
 Clipboard = Any
+
+
+# ============================================================== #
+#  Widget Field Groups (Phase 6: Data Structure Improvement)    #
+# ============================================================== #
+
+@dataclass
+class CommonFields:
+    """Common settings fields: config, page size, DPI, grid, margins."""
+    
+    # Configuration
+    config_field: TextField
+    
+    # Page size and DPI
+    page_size_field: Dropdown
+    orientation_field: Dropdown
+    dpi_field: TextField
+    custom_size_unit_field: Dropdown
+    custom_width_field: TextField
+    custom_height_field: TextField
+    size_info_text: Text
+    
+    # Grid settings
+    rows_field: TextField
+    cols_field: TextField
+    order_field: Dropdown
+    gutter_unit_field: Dropdown
+    gutter_field: TextField
+    grid_color_field: TextField
+    grid_alpha_field: TextField
+    grid_width_field: TextField
+    
+    # Margin settings
+    margin_unit_field: Dropdown
+    margin_top_field: TextField
+    margin_bottom_field: TextField
+    margin_left_field: TextField
+    margin_right_field: TextField
+
+
+@dataclass
+class ImageFields:
+    """Image split tab fields."""
+    
+    input_field: TextField
+    out_dir_field: TextField
+    test_page_field: TextField
+
+
+@dataclass
+class TemplateFields:
+    """Template generation tab fields."""
+    
+    template_out_field: TextField
+    
+    # Finish frame
+    draw_finish_field: Checkbox
+    finish_size_mode_field: Dropdown
+    finish_width_field: TextField
+    finish_height_field: TextField
+    finish_offset_x_field: TextField
+    finish_offset_y_field: TextField
+    finish_color_field: TextField
+    finish_alpha_field: TextField
+    finish_line_width_field: TextField
+    
+    # Basic frame
+    draw_basic_field: Checkbox
+    basic_size_mode_field: Dropdown
+    basic_width_field: TextField
+    basic_height_field: TextField
+    basic_offset_x_field: TextField
+    basic_offset_y_field: TextField
+    basic_color_field: TextField
+    basic_alpha_field: TextField
+    basic_line_width_field: TextField
+
+
+@dataclass
+class UiElements:
+    """Common UI elements: log, progress, status, preview."""
+    
+    log_field: TextField
+    progress_bar: ProgressBar
+    status_text: Text
+    preview_image: Image
+    run_btn: Button
+    cancel_btn: Button

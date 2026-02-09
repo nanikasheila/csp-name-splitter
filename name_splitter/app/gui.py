@@ -34,6 +34,7 @@ from name_splitter.core.template import (
 from name_splitter.app.gui_state import GuiState
 from name_splitter.app.gui_handlers import GuiWidgets, GuiHandlers
 from name_splitter.app.gui_widgets import WidgetBuilder
+from name_splitter.app.gui_types import CommonFields, ImageFields, TemplateFields, UiElements
 
 
 def main() -> None:
@@ -118,57 +119,12 @@ def main() -> None:
         run_btn = ft.ElevatedButton("Run", icon=ft.Icons.PLAY_ARROW)
         cancel_btn = ft.OutlinedButton("Cancel", icon=ft.Icons.CANCEL, disabled=True)
         
-        # Initialize GuiWidgets and GuiHandlers
+        # Initialize GuiWidgets using grouped field dataclasses
         widgets = GuiWidgets(
-            config_field=config_field,
-            page_size_field=page_size_field,
-            orientation_field=orientation_field,
-            dpi_field=dpi_field,
-            custom_size_unit_field=custom_size_unit_field,
-            custom_width_field=custom_width_field,
-            custom_height_field=custom_height_field,
-            size_info_text=size_info_text,
-            rows_field=rows_field,
-            cols_field=cols_field,
-            order_field=order_field,
-            gutter_unit_field=gutter_unit_field,
-            gutter_field=gutter_field,
-            margin_unit_field=margin_unit_field,
-            margin_top_field=margin_top_field,
-            margin_bottom_field=margin_bottom_field,
-            margin_left_field=margin_left_field,
-            margin_right_field=margin_right_field,
-            input_field=input_field,
-            out_dir_field=out_dir_field,
-            test_page_field=test_page_field,
-            template_out_field=template_out_field,
-            draw_finish_field=draw_finish_field,
-            finish_size_mode_field=finish_size_mode_field,
-            finish_width_field=finish_width_field,
-            finish_height_field=finish_height_field,
-            finish_offset_x_field=finish_offset_x_field,
-            finish_offset_y_field=finish_offset_y_field,
-            finish_color_field=finish_color_field,
-            finish_alpha_field=finish_alpha_field,
-            finish_line_width_field=finish_line_width_field,
-            draw_basic_field=draw_basic_field,
-            basic_size_mode_field=basic_size_mode_field,
-            basic_width_field=basic_width_field,
-            basic_height_field=basic_height_field,
-            basic_offset_x_field=basic_offset_x_field,
-            basic_offset_y_field=basic_offset_y_field,
-            basic_color_field=basic_color_field,
-            basic_alpha_field=basic_alpha_field,
-            basic_line_width_field=basic_line_width_field,
-            grid_color_field=grid_color_field,
-            grid_alpha_field=grid_alpha_field,
-            grid_width_field=grid_width_field,
-            log_field=log_field,
-            progress_bar=progress_bar,
-            status_text=status_text,
-            preview_image=preview_image,
-            run_btn=run_btn,
-            cancel_btn=cancel_btn,
+            common=CommonFields(**common_fields),
+            image=ImageFields(**image_fields),
+            template=TemplateFields(**template_fields),
+            ui=UiElements(**ui_elements, run_btn=run_btn, cancel_btn=cancel_btn),
         )
         
         handlers = GuiHandlers(widgets, state, page, clipboard)
