@@ -72,13 +72,13 @@ def main() -> None:
         orientation_field = ft.Dropdown(
             label="Orientation",
             options=[
-                ft.dropdown.Option("portrait"),
-                ft.dropdown.Option("landscape"),
+                ft.dropdown.Option(key="portrait", text="縦 (portrait)"),
+                ft.dropdown.Option(key="landscape", text="横 (landscape)"),
             ],
             value="portrait",
-            width=130,
+            width=155,
         )
-        dpi_field = ft.TextField(label="DPI", value="300", width=80)
+        dpi_field = ft.TextField(label="DPI", value="300", width=80, hint_text="例: 600", keyboard_type=ft.KeyboardType.NUMBER)
         custom_size_unit_field = ft.Dropdown(
             label="Size unit",
             options=[
@@ -88,21 +88,21 @@ def main() -> None:
             value="px",
             width=100,
         )
-        custom_width_field = ft.TextField(label="Width", value="", width=100)
-        custom_height_field = ft.TextField(label="Height", value="", width=100)
-        size_info_text = ft.Text("")
+        custom_width_field = ft.TextField(label="Width", value="", width=100, keyboard_type=ft.KeyboardType.NUMBER)
+        custom_height_field = ft.TextField(label="Height", value="", width=100, keyboard_type=ft.KeyboardType.NUMBER)
+        size_info_text = ft.Text("", size=11, italic=True)
 
         # -- Grid 設定 --
-        rows_field = ft.TextField(label="Rows", value="4", width=80)
-        cols_field = ft.TextField(label="Cols", value="4", width=80)
+        rows_field = ft.TextField(label="Rows", value="4", width=80, keyboard_type=ft.KeyboardType.NUMBER)
+        cols_field = ft.TextField(label="Cols", value="4", width=80, keyboard_type=ft.KeyboardType.NUMBER)
         order_field = ft.Dropdown(
             label="Order",
             options=[
-                ft.dropdown.Option("rtl_ttb"),
-                ft.dropdown.Option("ltr_ttb"),
+                ft.dropdown.Option(key="rtl_ttb", text="右→左 ↓"),
+                ft.dropdown.Option(key="ltr_ttb", text="左→右 ↓"),
             ],
             value="rtl_ttb",
-            width=130,
+            width=145,
         )
         gutter_unit_field = ft.Dropdown(
             label="Gutter unit",
@@ -113,7 +113,7 @@ def main() -> None:
             value="px",
             width=110,
         )
-        gutter_field = ft.TextField(label="Gutter", value="0", width=90)
+        gutter_field = ft.TextField(label="Gutter", value="0", width=90, keyboard_type=ft.KeyboardType.NUMBER)
 
         # -- Margin 4方向 + 単位選択 --
         margin_unit_field = ft.Dropdown(
@@ -125,10 +125,10 @@ def main() -> None:
             value="px",
             width=110,
         )
-        margin_top_field = ft.TextField(label="Top", value="0", width=80)
-        margin_bottom_field = ft.TextField(label="Bottom", value="0", width=80)
-        margin_left_field = ft.TextField(label="Left", value="0", width=80)
-        margin_right_field = ft.TextField(label="Right", value="0", width=80)
+        margin_top_field = ft.TextField(label="Top", value="0", width=80, keyboard_type=ft.KeyboardType.NUMBER)
+        margin_bottom_field = ft.TextField(label="Bottom", value="0", width=80, keyboard_type=ft.KeyboardType.NUMBER)
+        margin_left_field = ft.TextField(label="Left", value="0", width=80, keyboard_type=ft.KeyboardType.NUMBER)
+        margin_right_field = ft.TextField(label="Right", value="0", width=80, keyboard_type=ft.KeyboardType.NUMBER)
 
         # ============================================================== #
         #  Image Split タブ用                                             #
@@ -238,6 +238,17 @@ def main() -> None:
 
         def flush() -> None:
             page.update()
+
+        def show_error(msg: str) -> None:
+            """エラーをスナックバーで通知"""
+            try:
+                page.open(ft.SnackBar(
+                    content=ft.Text(str(msg)),
+                    bgcolor="red",
+                    duration=5000,
+                ))
+            except Exception:
+                pass
 
         def parse_int(val: str, label: str) -> int:
             try:
@@ -676,6 +687,7 @@ def main() -> None:
             except (ConfigError, ImageReadError, ValueError, RuntimeError) as exc:
                 add_log(f"Error: {exc}")
                 set_status("Error")
+                show_error(str(exc))
                 flush()
 
         def _run_job() -> None:
@@ -701,15 +713,25 @@ def main() -> None:
                 add_log(f"Plan written to {result.plan.manifest_path}")
                 add_log(f"Pages: {result.page_count}")
                 set_status("Done")
+                progress_bar.color = "green"
                 flush()
             except (ConfigError, LimitExceededError, ImageReadError, ValueError, RuntimeError) as exc:
                 add_log(f"Error: {exc}")
                 set_status("Error")
+                progress_bar.color = "red"
+                show_error(str(exc))
+                flush()
+            finally:
+                run_btn.disabled = False
+                cancel_btn.disabled = True
                 flush()
 
         def on_run(_: ft.ControlEvent) -> None:
             cancel_token_holder["token"] = CancelToken()
             progress_bar.value = 0
+            progress_bar.color = None
+            run_btn.disabled = True
+            cancel_btn.disabled = False
             add_log("Starting job...")
             flush()
             page.run_thread(_run_job)
@@ -735,6 +757,7 @@ def main() -> None:
             except (ConfigError, ValueError, RuntimeError) as exc:
                 add_log(f"Error: {exc}")
                 set_status("Error")
+                show_error(str(exc))
                 flush()
 
         def on_generate_template(_: ft.ControlEvent) -> None:
@@ -930,7 +953,7 @@ def main() -> None:
         #  ボタン                                                         #
         # ============================================================== #
         run_btn = ft.ElevatedButton("Run", on_click=on_run, icon=ft.Icons.PLAY_ARROW)
-        cancel_btn = ft.OutlinedButton("Cancel", on_click=on_cancel, icon=ft.Icons.CANCEL)
+        cancel_btn = ft.OutlinedButton("Cancel", on_click=on_cancel, icon=ft.Icons.CANCEL, disabled=True)
         tmpl_btn = ft.ElevatedButton("Generate Template", on_click=on_generate_template, icon=ft.Icons.GRID_ON)
         copy_log_btn = ft.OutlinedButton("Copy log", on_click=on_copy_log, icon=ft.Icons.COPY)
 
@@ -986,23 +1009,28 @@ def main() -> None:
         common_settings = ft.Container(
             content=ft.Column([
                 # Config file
-                ft.Text("Config file", weight=ft.FontWeight.BOLD, size=12),
+                ft.Row([ft.Icon(ft.Icons.DESCRIPTION, size=16), ft.Text("Config file", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
                 ft.Row([
                     config_field,
                     ft.IconButton(icon=ft.Icons.SETTINGS, tooltip="Select config YAML/JSON", on_click=pick_config),
                 ]),
                 ft.Divider(height=2),
                 # Page size & DPI
-                ft.Text("Page size & DPI", weight=ft.FontWeight.BOLD, size=12),
+                ft.Row([ft.Icon(ft.Icons.STRAIGHTEN, size=16), ft.Text("Page size & DPI", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
                 ft.Row([page_size_field, orientation_field, dpi_field], wrap=True),
                 ft.Row([custom_size_unit_field, custom_width_field, custom_height_field], wrap=True),
-                size_info_text,
+                ft.Container(
+                    content=size_info_text,
+                    bgcolor=ft.Colors.SURFACE_CONTAINER,
+                    border_radius=6,
+                    padding=ft.Padding(8, 4, 8, 4),
+                ),
                 ft.Divider(height=2),
                 # Grid settings
-                ft.Text("Grid settings", weight=ft.FontWeight.BOLD, size=12),
+                ft.Row([ft.Icon(ft.Icons.GRID_VIEW, size=16), ft.Text("Grid settings", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
                 ft.Row([rows_field, cols_field, order_field], wrap=True),
                 ft.Row([gutter_unit_field, gutter_field], wrap=True),
-                ft.Text("Margins", weight=ft.FontWeight.BOLD, size=12),
+                ft.Row([ft.Icon(ft.Icons.CROP_FREE, size=16), ft.Text("Margins", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
                 ft.Row([margin_unit_field, margin_top_field, margin_bottom_field, margin_left_field, margin_right_field], wrap=True),
             ], spacing=4, scroll=ft.ScrollMode.AUTO),
             padding=ft.Padding(8, 4, 8, 4),
