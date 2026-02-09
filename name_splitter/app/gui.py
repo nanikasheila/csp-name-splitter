@@ -48,6 +48,7 @@ from name_splitter.app.gui_utils import (
     build_grid_config as build_grid_config_from_params,
     build_template_style as build_template_style_from_params,
 )
+from name_splitter.app.gui_state import GuiState
 
 TRANSPARENT_PNG_BASE64 = (
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMA"
@@ -232,12 +233,7 @@ def main() -> None:
         )
 
         clipboard = ft.Clipboard() if hasattr(ft, "Clipboard") else None
-        cancel_token_holder: dict[str, CancelToken] = {"token": CancelToken()}
-        current_margin_unit: dict[str, str] = {"unit": "px"}  # Track current margin unit for conversion
-        current_page_size_unit: dict[str, str] = {"unit": "px"}  # Track current page size unit for conversion
-        current_gutter_unit: dict[str, str] = {"unit": "px"}  # Track current gutter unit for conversion
-        active_tab: dict[str, int] = {"index": 0}  # 0=Image Split, 1=Template
-        auto_preview_enabled: dict[str, bool] = {"enabled": False}  # 初期化中は無効
+        state = GuiState()  # 状態管理クラス
 
         # ============================================================== #
         #  ヘルパー関数                                                    #
@@ -291,8 +287,6 @@ def main() -> None:
             )
             return build_grid_config_from_params(params)
 
-        last_size: dict[str, int] = {"w": 0, "h": 0}
-
         def compute_page_px() -> tuple[int, int]:
             """UIフィールドからページサイズ（ピクセル）を計算（gui_utilsを使用）。"""
             params = PageSizeParams(
@@ -303,8 +297,8 @@ def main() -> None:
                 custom_height=custom_height_field.value,
                 custom_unit=custom_size_unit_field.value or "px",
             )
-            w, h = compute_page_size_px_impl(params, last_size["w"], last_size["h"])
-            last_size.update(w=w, h=h)
+            w, h = compute_page_size_px_impl(params, *state.page_size_cache.get())
+            state.page_size_cache.update(w, h)
             return w, h
 
         def compute_canvas_size_px() -> tuple[int, int]:
@@ -510,7 +504,7 @@ def main() -> None:
 
         def apply_config_to_ui(cfg: Any) -> None:
             """設定ファイルをUIに反映"""
-            auto_preview_enabled["enabled"] = False  # 反映中は自動更新を無効化
+            state.disable_auto_preview()  # 反映中は自動更新を無効化
             try:
                 # DPI
                 if hasattr(cfg.grid, "dpi") and cfg.grid.dpi > 0:
@@ -589,22 +583,22 @@ def main() -> None:
                         margin_right_field.value = str(cfg.grid.margin_px)
                 
                 # 現在の単位を更新
-                current_margin_unit["unit"] = margin_unit_field.value or "px"
-                current_page_size_unit["unit"] = custom_size_unit_field.value or "px"
-                current_gutter_unit["unit"] = gutter_unit_field.value or "px"
+                state.unit_state.margin_unit = margin_unit_field.value or "px"
+                state.unit_state.page_size_unit = custom_size_unit_field.value or "px"
+                state.unit_state.gutter_unit = gutter_unit_field.value or "px"
                 
                 update_size_info()
                 add_log("Config applied to UI")
                 flush()
             finally:
-                auto_preview_enabled["enabled"] = True
+                state.enable_auto_preview()
 
         def auto_preview_if_enabled(_: ft.ControlEvent | None = None) -> None:
             """自動プレビュー更新（有効な場合のみ）"""
-            if not auto_preview_enabled["enabled"]:
+            if not state.auto_preview_enabled:
                 return
             # Image Splitタブでinput_fieldが空の場合はスキップ
-            if active_tab["index"] == 0 and not (input_field.value or "").strip():
+            if state.is_image_split_tab() and not (input_field.value or "").strip():
                 return
             try:
                 on_preview(None)
@@ -627,7 +621,7 @@ def main() -> None:
         def on_preview(_: ft.ControlEvent) -> None:
             try:
                 grid_cfg = build_grid_config()
-                if active_tab["index"] == 1:
+                if state.is_template_tab():
                     # Template preview
                     w, h = compute_canvas_size_px()
                     dpi = parse_int(dpi_field.value or "0", "DPI")
@@ -674,7 +668,7 @@ def main() -> None:
                     add_log(f"[{ev.phase}] {ev.done}/{ev.total} {ev.message}".strip())
                     flush()
 
-                result = run_job(path, cfg, out_dir=out, test_page=tp_val, on_progress=on_progress, cancel_token=cancel_token_holder["token"])
+                result = run_job(path, cfg, out_dir=out, test_page=tp_val, on_progress=on_progress, cancel_token=state.cancel_token)
                 add_log(f"Plan written to {result.plan.manifest_path}")
                 add_log(f"Pages: {result.page_count}")
                 set_status("Done")
@@ -692,7 +686,7 @@ def main() -> None:
                 flush()
 
         def on_run(_: ft.ControlEvent) -> None:
-            cancel_token_holder["token"] = CancelToken()
+            state.reset_cancel_token()
             progress_bar.value = 0
             progress_bar.color = None
             run_btn.disabled = True
@@ -702,7 +696,7 @@ def main() -> None:
             page.run_thread(_run_job)
 
         def on_cancel(_: ft.ControlEvent) -> None:
-            cancel_token_holder["token"].cancel()
+            state.request_cancel()
             set_status("Cancel requested")
             flush()
 
@@ -749,7 +743,7 @@ def main() -> None:
             page.run_task(_copy_log)
 
         def on_tab_change(e: ft.ControlEvent) -> None:
-            active_tab["index"] = int(e.data)
+            state.set_tab(int(e.data))
             flush()
             # タブ切替時に自動プレビュー更新
             auto_preview_if_enabled(e)
@@ -837,7 +831,7 @@ def main() -> None:
         
         # Margin単位切替時の専用ハンドラ（値の自動換算）
         def on_margin_unit_change(e):
-            old_unit = current_margin_unit["unit"]
+            old_unit = state.unit_state.margin_unit
             new_unit = margin_unit_field.value or "px"
             
             # 同じ単位の場合は何もしない
@@ -852,7 +846,7 @@ def main() -> None:
                     fld.value = convert_unit_value(fld.value, old_unit, new_unit, dpi)
             
             # 現在の単位を更新
-            current_margin_unit["unit"] = new_unit
+            state.unit_state.margin_unit = new_unit
             update_size_info(e)
             auto_preview_if_enabled(e)
         
@@ -862,7 +856,7 @@ def main() -> None:
         
         # Page size unit切替時の専用ハンドラ（値の自動換算）
         def on_custom_size_unit_change(e):
-            old_unit = current_page_size_unit["unit"]
+            old_unit = state.unit_state.page_size_unit
             new_unit = custom_size_unit_field.value or "px"
             
             # 同じ単位の場合は何もしない
@@ -898,7 +892,7 @@ def main() -> None:
                     custom_height_field.value = str(h_px)
             
             # 現在の単位を更新
-            current_page_size_unit["unit"] = new_unit
+            state.unit_state.page_size_unit = new_unit
             update_size_info(e)
             auto_preview_if_enabled(e)
         
@@ -908,7 +902,7 @@ def main() -> None:
         
         # Gutter単位切替時の専用ハンドラ（値の自動換算）
         def on_gutter_unit_change(e):
-            old_unit = current_gutter_unit["unit"]
+            old_unit = state.unit_state.gutter_unit
             new_unit = gutter_unit_field.value or "px"
             
             # 同じ単位の場合は何もしない
@@ -922,7 +916,7 @@ def main() -> None:
                 gutter_field.value = convert_unit_value(gutter_field.value, old_unit, new_unit, dpi)
             
             # 現在の単位を更新
-            current_gutter_unit["unit"] = new_unit
+            state.unit_state.gutter_unit = new_unit
             update_size_info(e)
             auto_preview_if_enabled(e)
         
@@ -1109,7 +1103,7 @@ def main() -> None:
 
         update_size_info()
         # 初期化完了後、自動プレビューを有効化
-        auto_preview_enabled["enabled"] = True
+        state.enable_auto_preview()
 
     ft.app(target=_app)
 
