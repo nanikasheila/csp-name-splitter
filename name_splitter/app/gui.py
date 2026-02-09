@@ -33,11 +33,7 @@ from name_splitter.core.template import (
 )
 from name_splitter.app.gui_state import GuiState
 from name_splitter.app.gui_handlers import GuiWidgets, GuiHandlers
-
-TRANSPARENT_PNG_BASE64 = (
-    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR4nGNgYAAAAAMA"
-    "ASsJTYQAAAAASUVORK5CYII="
-)
+from name_splitter.app.gui_widgets import WidgetBuilder
 
 
 def main() -> None:
@@ -52,169 +48,68 @@ def main() -> None:
         page.window.height = 850
 
         # ============================================================== #
-        #  共通フィールド                                                  #
+        #  Build widgets using WidgetBuilder                             #
         # ============================================================== #
-        # -- 設定ファイル --
-        config_field = ft.TextField(label="Config (YAML/JSON, optional)", expand=True)
+        builder = WidgetBuilder(ft)
         
-        # -- ページサイズ & DPI (共通化) --
-        page_size_field = ft.Dropdown(
-            label="Page size",
-            options=[
-                ft.dropdown.Option("A4"),
-                ft.dropdown.Option("B4"),
-                ft.dropdown.Option("A5"),
-                ft.dropdown.Option("B5"),
-                ft.dropdown.Option("Custom"),
-            ],
-            value="A4",
-            width=135,
-        )
-        orientation_field = ft.Dropdown(
-            label="Orientation",
-            options=[
-                ft.dropdown.Option(key="portrait", text="縦 (portrait)"),
-                ft.dropdown.Option(key="landscape", text="横 (landscape)"),
-            ],
-            value="portrait",
-            width=155,
-        )
-        dpi_field = ft.TextField(label="DPI", value="300", width=80, hint_text="例: 600", keyboard_type=ft.KeyboardType.NUMBER)
-        custom_size_unit_field = ft.Dropdown(
-            label="Size unit",
-            options=[
-                ft.dropdown.Option("px"),
-                ft.dropdown.Option("mm"),
-            ],
-            value="px",
-            width=100,
-        )
-        custom_width_field = ft.TextField(label="Width", value="", width=100, keyboard_type=ft.KeyboardType.NUMBER)
-        custom_height_field = ft.TextField(label="Height", value="", width=100, keyboard_type=ft.KeyboardType.NUMBER)
-        size_info_text = ft.Text("", size=11, italic=True)
-
-        # -- Grid 設定 --
-        rows_field = ft.TextField(label="Rows", value="4", width=80, keyboard_type=ft.KeyboardType.NUMBER)
-        cols_field = ft.TextField(label="Cols", value="4", width=80, keyboard_type=ft.KeyboardType.NUMBER)
-        order_field = ft.Dropdown(
-            label="Order",
-            options=[
-                ft.dropdown.Option(key="rtl_ttb", text="右→左 ↓"),
-                ft.dropdown.Option(key="ltr_ttb", text="左→右 ↓"),
-            ],
-            value="rtl_ttb",
-            width=145,
-        )
-        gutter_unit_field = ft.Dropdown(
-            label="Gutter unit",
-            options=[
-                ft.dropdown.Option("px"),
-                ft.dropdown.Option("mm"),
-            ],
-            value="px",
-            width=110,
-        )
-        gutter_field = ft.TextField(label="Gutter", value="0", width=90, keyboard_type=ft.KeyboardType.NUMBER)
-
-        # -- Margin 4方向 + 単位選択 --
-        margin_unit_field = ft.Dropdown(
-            label="Margin unit",
-            options=[
-                ft.dropdown.Option("px"),
-                ft.dropdown.Option("mm"),
-            ],
-            value="px",
-            width=110,
-        )
-        margin_top_field = ft.TextField(label="Top", value="0", width=80, keyboard_type=ft.KeyboardType.NUMBER)
-        margin_bottom_field = ft.TextField(label="Bottom", value="0", width=80, keyboard_type=ft.KeyboardType.NUMBER)
-        margin_left_field = ft.TextField(label="Left", value="0", width=80, keyboard_type=ft.KeyboardType.NUMBER)
-        margin_right_field = ft.TextField(label="Right", value="0", width=80, keyboard_type=ft.KeyboardType.NUMBER)
-
-        # ============================================================== #
-        #  Image Split タブ用                                             #
-        # ============================================================== #
-        input_field = ft.TextField(label="Input image (PNG)", expand=True)
-        out_dir_field = ft.TextField(label="Output directory (optional)", expand=True)
-        test_page_field = ft.TextField(label="Test page (1-based, optional)", width=180)
-
-        # ============================================================== #
-        #  Template タブ用                                                #
-        # ============================================================== #
-        template_out_field = ft.TextField(label="Template output PNG", expand=True)
-
-        # -- Finish frame --
-        draw_finish_field = ft.Checkbox(label="Draw finish frame", value=True)
-        finish_size_mode_field = ft.Dropdown(
-            label="Finish size",
-            options=[
-                ft.dropdown.Option("Use per-page size"),
-                ft.dropdown.Option("A4"),
-                ft.dropdown.Option("B4"),
-                ft.dropdown.Option("A5"),
-                ft.dropdown.Option("B5"),
-                ft.dropdown.Option("Custom mm"),
-                ft.dropdown.Option("Custom px"),
-            ],
-            value="Use per-page size",
-            width=160,
-        )
-        finish_width_field = ft.TextField(label="Width", value="", width=110)
-        finish_height_field = ft.TextField(label="Height", value="", width=110)
-        finish_offset_x_field = ft.TextField(label="Offset X mm", value="0", width=110)
-        finish_offset_y_field = ft.TextField(label="Offset Y mm", value="0", width=110)
-        finish_color_field = ft.TextField(label="Color", value="#FFFFFF", width=100)
-        finish_alpha_field = ft.TextField(label="Alpha", value="200", width=90)
-        finish_line_width_field = ft.TextField(label="Line px", value="2", width=90)
-
-        # -- Basic frame --
-        draw_basic_field = ft.Checkbox(label="Draw basic frame", value=True)
-        basic_size_mode_field = ft.Dropdown(
-            label="Basic size",
-            options=[
-                ft.dropdown.Option("Use per-page size"),
-                ft.dropdown.Option("A4"),
-                ft.dropdown.Option("B4"),
-                ft.dropdown.Option("A5"),
-                ft.dropdown.Option("B5"),
-                ft.dropdown.Option("Custom mm"),
-                ft.dropdown.Option("Custom px"),
-            ],
-            value="Use per-page size",
-            width=160,
-        )
-        basic_width_field = ft.TextField(label="Width", value="", width=110)
-        basic_height_field = ft.TextField(label="Height", value="", width=110)
-        basic_offset_x_field = ft.TextField(label="Offset X mm", value="0", width=110)
-        basic_offset_y_field = ft.TextField(label="Offset Y mm", value="0", width=110)
-        basic_color_field = ft.TextField(label="Color", value="#00AAFF", width=100)
-        basic_alpha_field = ft.TextField(label="Alpha", value="200", width=90)
-        basic_line_width_field = ft.TextField(label="Line px", value="2", width=90)
-
-        # -- Grid visual --
-        grid_color_field = ft.TextField(label="Grid color", value="#FF5030", width=110)
-        grid_alpha_field = ft.TextField(label="Alpha", value="170", width=90)
-        grid_width_field = ft.TextField(label="Width px", value="1", width=90)
-
-        # ============================================================== #
-        #  共通 UI 部品                                                   #
-        # ============================================================== #
-        log_field = ft.TextField(multiline=True, read_only=True, expand=True, value="")
-        progress_bar = ft.ProgressBar(width=350, value=0)
-        status_text = ft.Text("Idle")
-
-        preview_image = ft.Image(
-            src=f"data:image/png;base64,{TRANSPARENT_PNG_BASE64}",
-            width=550,
-            height=550,
-            fit="contain",
-        )
-        preview_viewer = ft.InteractiveViewer(
-            content=preview_image,
-            min_scale=0.1,
-            max_scale=5.0,
-            boundary_margin=ft.Margin.all(100),
-        )
+        # Create all field widgets
+        common_fields = builder.create_common_fields()
+        image_fields = builder.create_image_split_fields()
+        template_fields = builder.create_template_fields()
+        ui_elements = builder.create_ui_elements()
+        
+        # Extract frequently used widgets for convenience
+        config_field = common_fields["config_field"]
+        page_size_field = common_fields["page_size_field"]
+        orientation_field = common_fields["orientation_field"]
+        dpi_field = common_fields["dpi_field"]
+        custom_size_unit_field = common_fields["custom_size_unit_field"]
+        custom_width_field = common_fields["custom_width_field"]
+        custom_height_field = common_fields["custom_height_field"]
+        size_info_text = common_fields["size_info_text"]
+        rows_field = common_fields["rows_field"]
+        cols_field = common_fields["cols_field"]
+        order_field = common_fields["order_field"]
+        gutter_unit_field = common_fields["gutter_unit_field"]
+        gutter_field = common_fields["gutter_field"]
+        margin_unit_field = common_fields["margin_unit_field"]
+        margin_top_field = common_fields["margin_top_field"]
+        margin_bottom_field = common_fields["margin_bottom_field"]
+        margin_left_field = common_fields["margin_left_field"]
+        margin_right_field = common_fields["margin_right_field"]
+        
+        input_field = image_fields["input_field"]
+        out_dir_field = image_fields["out_dir_field"]
+        test_page_field = image_fields["test_page_field"]
+        
+        template_out_field = template_fields["template_out_field"]
+        draw_finish_field = template_fields["draw_finish_field"]
+        finish_size_mode_field = template_fields["finish_size_mode_field"]
+        finish_width_field = template_fields["finish_width_field"]
+        finish_height_field = template_fields["finish_height_field"]
+        finish_offset_x_field = template_fields["finish_offset_x_field"]
+        finish_offset_y_field = template_fields["finish_offset_y_field"]
+        finish_color_field = template_fields["finish_color_field"]
+        finish_alpha_field = template_fields["finish_alpha_field"]
+        finish_line_width_field = template_fields["finish_line_width_field"]
+        draw_basic_field = template_fields["draw_basic_field"]
+        basic_size_mode_field = template_fields["basic_size_mode_field"]
+        basic_width_field = template_fields["basic_width_field"]
+        basic_height_field = template_fields["basic_height_field"]
+        basic_offset_x_field = template_fields["basic_offset_x_field"]
+        basic_offset_y_field = template_fields["basic_offset_y_field"]
+        basic_color_field = template_fields["basic_color_field"]
+        basic_alpha_field = template_fields["basic_alpha_field"]
+        basic_line_width_field = template_fields["basic_line_width_field"]
+        grid_color_field = template_fields["grid_color_field"]
+        grid_alpha_field = template_fields["grid_alpha_field"]
+        grid_width_field = template_fields["grid_width_field"]
+        
+        log_field = ui_elements["log_field"]
+        progress_bar = ui_elements["progress_bar"]
+        status_text = ui_elements["status_text"]
+        preview_image = ui_elements["preview_image"]
+        preview_viewer = ui_elements["preview_viewer"]
 
         clipboard = ft.Clipboard() if hasattr(ft, "Clipboard") else None
         state = GuiState()  # 状態管理クラス
@@ -462,105 +357,16 @@ def main() -> None:
         copy_log_btn = ft.OutlinedButton("Copy log", on_click=handlers.on_copy_log, icon=ft.Icons.COPY)
 
         # ============================================================== #
-        #  Tab 1: Image Split                                            #
+        #  Build tab content using WidgetBuilder                         #
         # ============================================================== #
-        tab_image = ft.Container(
-            content=ft.Column([
-                ft.Row([
-                    input_field,
-                    ft.IconButton(icon=ft.Icons.FOLDER_OPEN, tooltip="Select image", on_click=pick_input),
-                ]),
-                ft.Row([
-                    out_dir_field,
-                    ft.IconButton(icon=ft.Icons.FOLDER, tooltip="Select output dir", on_click=pick_out_dir),
-                    test_page_field,
-                ]),
-                ft.Row([run_btn, cancel_btn]),
-            ], spacing=6, scroll=ft.ScrollMode.AUTO),
-            padding=ft.Padding(8, 6, 8, 6),
+        tab_image = builder.build_tab_image(
+            image_fields, run_btn, cancel_btn, pick_input, pick_out_dir
         )
-
-        # ============================================================== #
-        #  Tab 2: Template Generation                                    #
-        # ============================================================== #
-        tab_template = ft.Container(
-            content=ft.Column([
-                # Finish frame (accordion)
-                ft.ExpansionPanelList(
-                    controls=[
-                        ft.ExpansionPanel(
-                            header=ft.Row([draw_finish_field, ft.Text("Finish frame", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
-                            content=ft.Column([
-                                ft.Row([finish_size_mode_field, finish_width_field, finish_height_field], wrap=True),
-                                ft.Row([finish_offset_x_field, finish_offset_y_field, finish_color_field, finish_alpha_field, finish_line_width_field], wrap=True),
-                            ], spacing=4),
-                            expanded=False,
-                            can_tap_header=True,
-                        ),
-                    ],
-                    elevation=0,
-                    spacing=0,
-                ),
-                # Basic frame (accordion)
-                ft.ExpansionPanelList(
-                    controls=[
-                        ft.ExpansionPanel(
-                            header=ft.Row([draw_basic_field, ft.Text("Basic frame", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
-                            content=ft.Column([
-                                ft.Row([basic_size_mode_field, basic_width_field, basic_height_field], wrap=True),
-                                ft.Row([basic_offset_x_field, basic_offset_y_field, basic_color_field, basic_alpha_field, basic_line_width_field], wrap=True),
-                            ], spacing=4),
-                            expanded=False,
-                            can_tap_header=True,
-                        ),
-                    ],
-                    elevation=0,
-                    spacing=0,
-                ),
-                ft.Divider(height=4),
-                # Template output
-                ft.Row([
-                    template_out_field,
-                    ft.IconButton(icon=ft.Icons.SAVE, tooltip="Save template PNG", on_click=pick_template_out),
-                ]),
-                ft.Row([tmpl_btn]),
-            ], spacing=4, scroll=ft.ScrollMode.AUTO),
-            padding=ft.Padding(8, 6, 8, 6),
+        tab_template = builder.build_tab_template(
+            template_fields, tmpl_btn, pick_template_out
         )
-
-        # ============================================================== #
-        #  共通設定エリア（右側上部）                                        #
-        # ============================================================== #
-        common_settings = ft.Container(
-            content=ft.Column([
-                # Config file
-                ft.Row([ft.Icon(ft.Icons.DESCRIPTION, size=16), ft.Text("Config file", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
-                ft.Row([
-                    config_field,
-                    ft.IconButton(icon=ft.Icons.SETTINGS, tooltip="Select config YAML/JSON", on_click=pick_config),
-                ]),
-                ft.Divider(height=2),
-                # Page size & DPI
-                ft.Row([ft.Icon(ft.Icons.STRAIGHTEN, size=16), ft.Text("Page size & DPI", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
-                ft.Row([page_size_field, orientation_field, dpi_field], wrap=True),
-                ft.Row([custom_size_unit_field, custom_width_field, custom_height_field], wrap=True),
-                ft.Container(
-                    content=size_info_text,
-                    bgcolor=ft.Colors.SURFACE_CONTAINER,
-                    border_radius=6,
-                    padding=ft.Padding(8, 4, 8, 4),
-                ),
-                ft.Divider(height=2),
-                # Grid settings
-                ft.Row([ft.Icon(ft.Icons.GRID_VIEW, size=16), ft.Text("Grid settings", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
-                ft.Row([rows_field, cols_field, order_field], wrap=True),
-                ft.Row([gutter_unit_field, gutter_field], wrap=True),
-                ft.Row([grid_color_field, grid_alpha_field, grid_width_field], wrap=True),
-                ft.Divider(height=2),
-                ft.Row([ft.Icon(ft.Icons.CROP_FREE, size=16), ft.Text("Margins", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
-                ft.Row([margin_unit_field, margin_top_field, margin_bottom_field, margin_left_field, margin_right_field], wrap=True),
-            ], spacing=4, scroll=ft.ScrollMode.AUTO),
-            padding=ft.Padding(8, 4, 8, 4),
+        common_settings = builder.build_common_settings_area(
+            common_fields, pick_config
         )
 
         # ============================================================== #
