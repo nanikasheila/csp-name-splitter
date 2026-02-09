@@ -251,6 +251,8 @@ def main() -> None:
             m_left = convert_margin_to_px(margin_left_field.value, unit, dpi)
             m_right = convert_margin_to_px(margin_right_field.value, unit, dpi)
 
+            page_w_px, page_h_px = compute_page_px()
+
             return GridConfig(
                 rows=rows,
                 cols=cols,
@@ -261,6 +263,9 @@ def main() -> None:
                 margin_left_px=m_left,
                 margin_right_px=m_right,
                 gutter_px=gutter,
+                dpi=dpi,
+                page_width_px=page_w_px,
+                page_height_px=page_h_px,
             )
 
         last_size: dict[str, int] = {"w": 0, "h": 0}
@@ -484,6 +489,20 @@ def main() -> None:
             """設定ファイルをUIに反映"""
             auto_preview_enabled["enabled"] = False  # 反映中は自動更新を無効化
             try:
+                # DPI
+                if hasattr(cfg.grid, "dpi") and cfg.grid.dpi > 0:
+                    dpi_field.value = str(cfg.grid.dpi)
+                
+                # Page size & orientation
+                if hasattr(cfg.grid, "page_width_px") and hasattr(cfg.grid, "page_height_px"):
+                    w, h = cfg.grid.page_width_px, cfg.grid.page_height_px
+                    if w > 0 and h > 0:
+                        custom_width_field.value = str(w)
+                        custom_height_field.value = str(h)
+                        page_size_field.value = "Custom"
+                        # Orientation
+                        orientation_field.value = "portrait" if h > w else "landscape"
+                
                 # Grid設定
                 rows_field.value = str(cfg.grid.rows)
                 cols_field.value = str(cfg.grid.cols)
@@ -699,7 +718,6 @@ def main() -> None:
         run_btn = ft.ElevatedButton("Run", on_click=on_run, icon=ft.Icons.PLAY_ARROW)
         cancel_btn = ft.OutlinedButton("Cancel", on_click=on_cancel, icon=ft.Icons.CANCEL)
         tmpl_btn = ft.ElevatedButton("Generate Template", on_click=on_generate_template, icon=ft.Icons.GRID_ON)
-        preview_btn = ft.OutlinedButton("Preview", on_click=on_preview, icon=ft.Icons.PREVIEW)
         copy_log_btn = ft.OutlinedButton("Copy log", on_click=on_copy_log, icon=ft.Icons.COPY)
 
         # ============================================================== #
@@ -783,14 +801,11 @@ def main() -> None:
             ft.Row([
                 # 左側: Preview
                 ft.Container(
-                    content=ft.Column([
-                        ft.Row([preview_btn, copy_log_btn]),
-                        ft.Container(
-                            content=preview_viewer,
-                            border=ft.border.all(1, outline_color),
-                            padding=8,
-                        ),
-                    ]),
+                    content=ft.Container(
+                        content=preview_viewer,
+                        border=ft.border.all(1, outline_color),
+                        padding=8,
+                    ),
                     expand=1,
                     padding=ft.Padding(4, 4, 2, 4),
                 ),
@@ -816,6 +831,7 @@ def main() -> None:
                         # Status & Progress
                         ft.Row([progress_bar, status_text]),
                         # Log
+                        ft.Row([ft.Text("Log", weight=ft.FontWeight.BOLD, size=12), copy_log_btn], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
                         ft.Container(
                             content=log_field,
                             border=ft.border.all(1, outline_color),

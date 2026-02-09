@@ -27,6 +27,9 @@ class GridConfig:
     margin_left_px: int = 0
     margin_right_px: int = 0
     gutter_px: int = 0
+    dpi: int = 300
+    page_width_px: int = 0  # 0 means use default
+    page_height_px: int = 0
 
 
 @dataclass(frozen=True)
@@ -158,6 +161,9 @@ def load_config(path: str | Path) -> Config:
             margin_left_px=margin_left,
             margin_right_px=margin_right,
             gutter_px=int(grid_section.get("gutter_px", 0)),
+            dpi=int(grid_section.get("dpi", 300)),
+            page_width_px=int(grid_section.get("page_width_px", 0)),
+            page_height_px=int(grid_section.get("page_height_px", 0)),
         ),
         merge=merge,
         output=OutputConfig(
@@ -195,6 +201,10 @@ def validate_config(cfg: Config) -> None:
         raise ConfigError("grid.margin_top_px and grid.margin_bottom_px must be >= 0")
     if cfg.grid.margin_left_px < 0 or cfg.grid.margin_right_px < 0:
         raise ConfigError("grid.margin_left_px and grid.margin_right_px must be >= 0")
+    if cfg.grid.dpi <= 0:
+        raise ConfigError("grid.dpi must be positive")
+    if cfg.grid.page_width_px < 0 or cfg.grid.page_height_px < 0:
+        raise ConfigError("grid.page_width_px and grid.page_height_px must be >= 0")
     if cfg.grid.order not in ALLOWED_GRID_ORDERS:
         raise ConfigError(f"grid.order must be one of {sorted(ALLOWED_GRID_ORDERS)}")
     if cfg.limits.max_dim_px <= 0:
