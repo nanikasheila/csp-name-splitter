@@ -61,9 +61,13 @@ def write_plan(
             "margin_left_px": cfg.grid.margin_left_px,
             "margin_right_px": cfg.grid.margin_right_px,
             "gutter_px": cfg.grid.gutter_px,
+            "margin_unit": cfg.grid.margin_unit,
             "dpi": cfg.grid.dpi,
+            "page_size_name": cfg.grid.page_size_name,
+            "orientation": cfg.grid.orientation,
             "page_width_px": cfg.grid.page_width_px,
             "page_height_px": cfg.grid.page_height_px,
+            "page_size_unit": cfg.grid.page_size_unit,
         },
         "output": {
             "page_basename": cfg.output.page_basename,
