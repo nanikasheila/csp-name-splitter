@@ -200,6 +200,7 @@ def main() -> None:
         clipboard = ft.Clipboard() if hasattr(ft, "Clipboard") else None
         cancel_token_holder: dict[str, CancelToken] = {"token": CancelToken()}
         active_tab: dict[str, int] = {"index": 0}  # 0=Image Split, 1=Template
+        auto_preview_enabled: dict[str, bool] = {"enabled": False}  # 初期化中は無効
 
         # ============================================================== #
         #  ヘルパー関数                                                    #
@@ -406,25 +407,6 @@ def main() -> None:
                 size_info_text.color = "red"
             flush()
 
-        # イベント登録
-        for _fld in (
-            dpi_field, rows_field, cols_field, margin_top_field, margin_bottom_field,
-            margin_left_field, margin_right_field, gutter_field,
-            custom_width_field, custom_height_field,
-            finish_width_field, finish_height_field,
-            basic_width_field, basic_height_field,
-        ):
-            _fld.on_change = update_size_info
-            _fld.on_blur = update_size_info
-        for _dd in (
-            page_size_field, orientation_field, margin_unit_field,
-            finish_size_mode_field, basic_size_mode_field,
-        ):
-            if hasattr(_dd, "on_select"):
-                _dd.on_select = update_size_info
-            if hasattr(_dd, "on_text_change"):
-                _dd.on_text_change = update_size_info
-
         # ============================================================== #
         #  FilePicker (Flet ≥ 0.80 Service API)                          #
         # ============================================================== #
@@ -442,6 +424,7 @@ def main() -> None:
                 return
             if files:
                 config_field.value = files[0].path
+                on_config_change(None)  # UI反映 + 状態更新
                 flush()
 
         async def pick_input(_: ft.ControlEvent) -> None:
@@ -458,6 +441,7 @@ def main() -> None:
                 return
             if files:
                 input_field.value = files[0].path
+                auto_preview_if_enabled(None)  # 画像選択時に自動プレビュー
                 flush()
 
         async def pick_out_dir(_: ft.ControlEvent) -> None:
@@ -495,6 +479,59 @@ def main() -> None:
             if config_field.value:
                 return "Loaded config", load_config(config_field.value)
             return "Loaded default config", load_default_config()
+
+        def apply_config_to_ui(cfg: Any) -> None:
+            """設定ファイルをUIに反映"""
+            auto_preview_enabled["enabled"] = False  # 反映中は自動更新を無効化
+            try:
+                # Grid設定
+                rows_field.value = str(cfg.grid.rows)
+                cols_field.value = str(cfg.grid.cols)
+                order_field.value = cfg.grid.order
+                gutter_field.value = str(cfg.grid.gutter_px)
+                # Margin（4方向が指定されていればそれを、なければlegacy margin_pxを使用）
+                if cfg.grid.margin_top_px or cfg.grid.margin_bottom_px or cfg.grid.margin_left_px or cfg.grid.margin_right_px:
+                    margin_top_field.value = str(cfg.grid.margin_top_px)
+                    margin_bottom_field.value = str(cfg.grid.margin_bottom_px)
+                    margin_left_field.value = str(cfg.grid.margin_left_px)
+                    margin_right_field.value = str(cfg.grid.margin_right_px)
+                else:
+                    # Legacy margin_pxを全方向に適用
+                    margin_top_field.value = str(cfg.grid.margin_px)
+                    margin_bottom_field.value = str(cfg.grid.margin_px)
+                    margin_left_field.value = str(cfg.grid.margin_px)
+                    margin_right_field.value = str(cfg.grid.margin_px)
+                update_size_info()
+                add_log("Config applied to UI")
+                flush()
+            finally:
+                auto_preview_enabled["enabled"] = True
+
+        def auto_preview_if_enabled(_: ft.ControlEvent | None = None) -> None:
+            """自動プレビュー更新（有効な場合のみ）"""
+            if not auto_preview_enabled["enabled"]:
+                return
+            # Image Splitタブでinput_fieldが空の場合はスキップ
+            if active_tab["index"] == 0 and not (input_field.value or "").strip():
+                return
+            try:
+                on_preview(None)
+            except Exception as exc:  # noqa: BLE001
+                # エラーは無視（まだ設定が不完全な場合があるため）
+                pass
+
+        def on_config_change(_: ft.ControlEvent) -> None:
+            """設定ファイルが変更されたらUIに反映"""
+            if not config_field.value:
+                return
+            try:
+                msg, cfg = load_config_for_ui()
+                apply_config_to_ui(cfg)
+                set_status(msg)
+            except Exception as exc:  # noqa: BLE001
+                add_log(f"Config load error: {exc}")
+                set_status("Config error")
+            flush()
 
         def on_preview(_: ft.ControlEvent) -> None:
             try:
@@ -607,6 +644,54 @@ def main() -> None:
         def on_tab_change(e: ft.ControlEvent) -> None:
             active_tab["index"] = int(e.data)
             flush()
+            # タブ切替時に自動プレビュー更新
+            auto_preview_if_enabled(e)
+
+        # ============================================================== #
+        #  イベント登録                                                   #
+        # ============================================================== #
+        # 設定ファイル変更時
+        config_field.on_change = on_config_change
+        config_field.on_blur = on_config_change
+        
+        # Input画像変更時（Image Splitタブで自動プレビュー）
+        input_field.on_blur = auto_preview_if_enabled
+        
+        # Preview影響フィールド（サイズ情報更新 + 自動プレビュー）
+        def make_preview_handler():
+            def handler(e):
+                update_size_info(e)
+                auto_preview_if_enabled(e)
+            return handler
+        
+        preview_affected_fields = (
+            dpi_field, rows_field, cols_field, margin_top_field, margin_bottom_field,
+            margin_left_field, margin_right_field, gutter_field,
+            custom_width_field, custom_height_field,
+        )
+        for _fld in preview_affected_fields:
+            _fld.on_change = make_preview_handler()
+            _fld.on_blur = make_preview_handler()
+        
+        # Preview影響Dropdown
+        preview_affected_dropdowns = (page_size_field, orientation_field, margin_unit_field)
+        for _dd in preview_affected_dropdowns:
+            handler = make_preview_handler()
+            if hasattr(_dd, "on_select"):
+                _dd.on_select = handler
+            if hasattr(_dd, "on_text_change"):
+                _dd.on_text_change = handler
+        
+        # Template専用フィールド（サイズ情報更新のみ）
+        template_only_fields = (finish_width_field, finish_height_field, basic_width_field, basic_height_field)
+        for _fld in template_only_fields:
+            _fld.on_change = update_size_info
+            _fld.on_blur = update_size_info
+        for _dd in (finish_size_mode_field, basic_size_mode_field):
+            if hasattr(_dd, "on_select"):
+                _dd.on_select = update_size_info
+            if hasattr(_dd, "on_text_change"):
+                _dd.on_text_change = update_size_info
 
         # ============================================================== #
         #  ボタン                                                         #
@@ -745,6 +830,8 @@ def main() -> None:
         )
 
         update_size_info()
+        # 初期化完了後、自動プレビューを有効化
+        auto_preview_enabled["enabled"] = True
 
     ft.app(target=_app)
 
