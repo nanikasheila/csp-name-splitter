@@ -61,6 +61,7 @@ def write_plan(
             "margin_left_px": cfg.grid.margin_left_px,
             "margin_right_px": cfg.grid.margin_right_px,
             "gutter_px": cfg.grid.gutter_px,
+            "gutter_unit": cfg.grid.gutter_unit,
             "margin_unit": cfg.grid.margin_unit,
             "dpi": cfg.grid.dpi,
             "page_size_name": cfg.grid.page_size_name,

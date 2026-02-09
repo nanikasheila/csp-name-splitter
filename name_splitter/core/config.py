@@ -27,6 +27,7 @@ class GridConfig:
     margin_left_px: int = 0
     margin_right_px: int = 0
     gutter_px: int = 0
+    gutter_unit: str = "px"  # px or mm for gutter
     margin_unit: str = "px"  # px or mm for margin fields
     dpi: int = 300
     page_size_name: str = "A4"  # A4, B5, Custom, etc.
@@ -165,6 +166,7 @@ def load_config(path: str | Path) -> Config:
             margin_left_px=margin_left,
             margin_right_px=margin_right,
             gutter_px=int(grid_section.get("gutter_px", 0)),
+            gutter_unit=str(grid_section.get("gutter_unit", "px")),
             margin_unit=str(grid_section.get("margin_unit", "px")),
             dpi=int(grid_section.get("dpi", 300)),
             page_size_name=str(grid_section.get("page_size_name", "A4")),

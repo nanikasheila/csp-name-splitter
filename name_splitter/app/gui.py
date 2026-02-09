@@ -104,6 +104,15 @@ def main() -> None:
             value="rtl_ttb",
             width=130,
         )
+        gutter_unit_field = ft.Dropdown(
+            label="Gutter unit",
+            options=[
+                ft.dropdown.Option("px"),
+                ft.dropdown.Option("mm"),
+            ],
+            value="px",
+            width=110,
+        )
         gutter_field = ft.TextField(label="Gutter", value="0", width=90)
 
         # -- Margin 4方向 + 単位選択 --
@@ -210,6 +219,7 @@ def main() -> None:
         cancel_token_holder: dict[str, CancelToken] = {"token": CancelToken()}
         current_margin_unit: dict[str, str] = {"unit": "px"}  # Track current margin unit for conversion
         current_page_size_unit: dict[str, str] = {"unit": "px"}  # Track current page size unit for conversion
+        current_gutter_unit: dict[str, str] = {"unit": "px"}  # Track current gutter unit for conversion
         active_tab: dict[str, int] = {"index": 0}  # 0=Image Split, 1=Template
         auto_preview_enabled: dict[str, bool] = {"enabled": False}  # 初期化中は無効
 
@@ -252,15 +262,16 @@ def main() -> None:
         def build_grid_config() -> GridConfig:
             rows = parse_int(rows_field.value or "0", "Rows")
             cols = parse_int(cols_field.value or "0", "Cols")
-            gutter = parse_int(gutter_field.value or "0", "Gutter")
             order = order_field.value or "rtl_ttb"
-            unit = margin_unit_field.value or "px"
+            margin_unit = margin_unit_field.value or "px"
+            gutter_unit = gutter_unit_field.value or "px"
             dpi = parse_int(dpi_field.value or "300", "DPI")
 
-            m_top = convert_margin_to_px(margin_top_field.value, unit, dpi)
-            m_bottom = convert_margin_to_px(margin_bottom_field.value, unit, dpi)
-            m_left = convert_margin_to_px(margin_left_field.value, unit, dpi)
-            m_right = convert_margin_to_px(margin_right_field.value, unit, dpi)
+            m_top = convert_margin_to_px(margin_top_field.value, margin_unit, dpi)
+            m_bottom = convert_margin_to_px(margin_bottom_field.value, margin_unit, dpi)
+            m_left = convert_margin_to_px(margin_left_field.value, margin_unit, dpi)
+            m_right = convert_margin_to_px(margin_right_field.value, margin_unit, dpi)
+            gutter = convert_margin_to_px(gutter_field.value, gutter_unit, dpi)
 
             page_w_px, page_h_px = compute_page_px()
             page_size_name = page_size_field.value or "A4"
@@ -277,7 +288,8 @@ def main() -> None:
                 margin_left_px=m_left,
                 margin_right_px=m_right,
                 gutter_px=gutter,
-                margin_unit=unit,
+                gutter_unit=gutter_unit,
+                margin_unit=margin_unit,
                 dpi=dpi,
                 page_size_name=page_size_name,
                 orientation=orientation,
@@ -397,12 +409,24 @@ def main() -> None:
                 is_custom = page_size_field.value == "Custom"
                 custom_width_field.disabled = not is_custom
                 custom_height_field.disabled = not is_custom
+                
+                # Custom以外でもページサイズを表示（現在の単位に応じて）
+                page_size_unit = custom_size_unit_field.value or "px"
                 if is_custom and (not custom_width_field.value or not custom_height_field.value):
-                    custom_width_field.value = str(pw)
-                    custom_height_field.value = str(ph)
+                    if page_size_unit == "mm":
+                        custom_width_field.value = f"{wmm:.2f}"
+                        custom_height_field.value = f"{hmm:.2f}"
+                    else:
+                        custom_width_field.value = str(pw)
+                        custom_height_field.value = str(ph)
                 if not is_custom:
-                    custom_width_field.value = str(pw)
-                    custom_height_field.value = str(ph)
+                    # プリセットサイズでも現在の単位で表示
+                    if page_size_unit == "mm":
+                        custom_width_field.value = f"{wmm:.2f}"
+                        custom_height_field.value = f"{hmm:.2f}"
+                    else:
+                        custom_width_field.value = str(pw)
+                        custom_height_field.value = str(ph)
 
                 # Finish frame auto-fill
                 fm = finish_size_mode_field.value or "Use per-page size"
@@ -545,7 +569,18 @@ def main() -> None:
                 rows_field.value = str(cfg.grid.rows)
                 cols_field.value = str(cfg.grid.cols)
                 order_field.value = cfg.grid.order
-                gutter_field.value = str(cfg.grid.gutter_px)
+                
+                # Gutter unit
+                if hasattr(cfg.grid, "gutter_unit"):
+                    gutter_unit_field.value = cfg.grid.gutter_unit
+                
+                # Gutter (設定ファイルにはpx値で保存されているので、UIの単位に応じて変換)
+                dpi = cfg.grid.dpi
+                gutter_unit = gutter_unit_field.value or "px"
+                if gutter_unit == "mm":
+                    gutter_field.value = f"{cfg.grid.gutter_px * 25.4 / dpi:.2f}"
+                else:
+                    gutter_field.value = str(cfg.grid.gutter_px)
                 
                 # Margin unit
                 if hasattr(cfg.grid, "margin_unit"):
@@ -583,6 +618,7 @@ def main() -> None:
                 # 現在の単位を更新
                 current_margin_unit["unit"] = margin_unit_field.value or "px"
                 current_page_size_unit["unit"] = custom_size_unit_field.value or "px"
+                current_gutter_unit["unit"] = gutter_unit_field.value or "px"
                 
                 update_size_info()
                 add_log("Config applied to UI")
@@ -806,20 +842,33 @@ def main() -> None:
                 return
             
             dpi = parse_int(dpi_field.value or "300", "DPI")
+            ori = orientation_field.value or "portrait"
+            size_choice = page_size_field.value or "A4"
             
-            # width/heightを換算
-            for fld in [custom_width_field, custom_height_field]:
-                if fld.value:
-                    try:
-                        val = float(fld.value)
-                        if old_unit == "px" and new_unit == "mm":
-                            # px → mm
-                            fld.value = f"{val * 25.4 / dpi:.2f}"
-                        elif old_unit == "mm" and new_unit == "px":
-                            # mm → px
-                            fld.value = str(int(val * dpi / 25.4))
-                    except ValueError:
-                        pass
+            # 現在のページサイズをpxで取得
+            if size_choice == "Custom":
+                # Customの場合は既存の値を換算
+                for fld in [custom_width_field, custom_height_field]:
+                    if fld.value:
+                        try:
+                            val = float(fld.value)
+                            if old_unit == "px" and new_unit == "mm":
+                                # px → mm
+                                fld.value = f"{val * 25.4 / dpi:.2f}"
+                            elif old_unit == "mm" and new_unit == "px":
+                                # mm → px
+                                fld.value = str(int(val * dpi / 25.4))
+                        except ValueError:
+                            pass
+            else:
+                # A4, B5などのプリセットサイズの場合、px値を計算して表示
+                w_px, h_px = template_compute_page_size_px(size_choice, dpi, ori)
+                if new_unit == "mm":
+                    custom_width_field.value = f"{w_px * 25.4 / dpi:.2f}"
+                    custom_height_field.value = f"{h_px * 25.4 / dpi:.2f}"
+                else:
+                    custom_width_field.value = str(w_px)
+                    custom_height_field.value = str(h_px)
             
             # 現在の単位を更新
             current_page_size_unit["unit"] = new_unit
@@ -829,6 +878,39 @@ def main() -> None:
         custom_size_unit_field.on_change = on_custom_size_unit_change
         if hasattr(custom_size_unit_field, "on_select"):
             custom_size_unit_field.on_select = on_custom_size_unit_change
+        
+        # Gutter単位切替時の専用ハンドラ（値の自動換算）
+        def on_gutter_unit_change(e):
+            old_unit = current_gutter_unit["unit"]
+            new_unit = gutter_unit_field.value or "px"
+            
+            # 同じ単位の場合は何もしない
+            if old_unit == new_unit:
+                return
+            
+            dpi = parse_int(dpi_field.value or "300", "DPI")
+            
+            # gutter値を換算
+            if gutter_field.value:
+                try:
+                    val = float(gutter_field.value)
+                    if old_unit == "px" and new_unit == "mm":
+                        # px → mm
+                        gutter_field.value = f"{val * 25.4 / dpi:.2f}"
+                    elif old_unit == "mm" and new_unit == "px":
+                        # mm → px
+                        gutter_field.value = str(int(val * dpi / 25.4))
+                except ValueError:
+                    pass
+            
+            # 現在の単位を更新
+            current_gutter_unit["unit"] = new_unit
+            update_size_info(e)
+            auto_preview_if_enabled(e)
+        
+        gutter_unit_field.on_change = on_gutter_unit_change
+        if hasattr(gutter_unit_field, "on_select"):
+            gutter_unit_field.on_select = on_gutter_unit_change
         
         # Preview影響Dropdown
         preview_affected_dropdowns = (page_size_field, orientation_field, order_field,
@@ -918,7 +1000,8 @@ def main() -> None:
                 ft.Divider(height=2),
                 # Grid settings
                 ft.Text("Grid settings", weight=ft.FontWeight.BOLD, size=12),
-                ft.Row([rows_field, cols_field, order_field, gutter_field], wrap=True),
+                ft.Row([rows_field, cols_field, order_field], wrap=True),
+                ft.Row([gutter_unit_field, gutter_field], wrap=True),
                 ft.Text("Margins", weight=ft.FontWeight.BOLD, size=12),
                 ft.Row([margin_unit_field, margin_top_field, margin_bottom_field, margin_left_field, margin_right_field], wrap=True),
             ], spacing=4, scroll=ft.ScrollMode.AUTO),
