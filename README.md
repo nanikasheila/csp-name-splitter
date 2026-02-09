@@ -443,13 +443,15 @@ csp-name-splitter/
 
 ### アーキテクチャ
 
-#### レイヤー構造
+詳細なアーキテクチャドキュメントは **[ARCHITECTURE.md](ARCHITECTURE.md)** を参照してください。
+
+#### 概要
 
 ```mermaid
 graph TB
     subgraph "Application Layer"
         CLI[CLI<br/>cli.py]
-        GUI[GUI<br/>gui.py]
+        GUI[GUI<br/>5 modules]
     end
     
     subgraph "Core Layer"
@@ -486,64 +488,13 @@ graph TB
     style FLET fill:#f3e5f5
 ```
 
-#### 処理フロー
+**主要な設計原則**:
+- 関心の分離 (UI / ビジネスロジック / データ)
+- Protocol型による型安全性
+- 依存性注入
+- 単一責任原則
 
-```mermaid
-sequenceDiagram
-    participant User
-    participant CLI/GUI
-    participant Job
-    participant ImageRead
-    participant Grid
-    participant Render
-    participant Output
-    
-    User->>CLI/GUI: 画像 + 設定
-    CLI/GUI->>Job: run_job()
-    
-    Job->>ImageRead: 画像読み込み
-    ImageRead-->>Job: ImageInfo
-    
-    Job->>Grid: グリッド計算
-    Grid-->>Job: CellList
-    
-    loop 各ページ
-        Job->>Render: ページ切り出し
-        Render->>Output: PNG保存
-        Render-->>Job: 進捗通知
-        Job-->>CLI/GUI: ProgressEvent
-    end
-    
-    Job-->>CLI/GUI: JobResult
-    CLI/GUI-->>User: 完了通知
-```
-
-#### Core API設計
-
-```python
-# 単一エントリーポイント
-def run_job(
-    input_image: str,
-    cfg: Config,
-    *,
-    out_dir: str | None = None,
-    test_page: int | None = None,
-    on_progress: Callable[[ProgressEvent], None] | None = None,
-    cancel_token: CancelToken | None = None,
-) -> JobResult:
-    """
-    Args:
-        input_image: 入力画像パス
-        cfg: 設定オブジェクト
-        out_dir: 出力ディレクトリ（省略時はcfgから取得）
-        test_page: テストページ番号（1始まり、省略時は全ページ）
-        on_progress: 進捗コールバック
-        cancel_token: キャンセルトークン
-    
-    Returns:
-        JobResult: 出力先、ページ数、プランなど
-    """
-```
+詳細は [ARCHITECTURE.md](ARCHITECTURE.md) を参照してください。
 
 ### テスト
 
