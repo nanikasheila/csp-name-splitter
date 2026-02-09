@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, Tuple
 
 from .errors import ImageReadError
 
-RGBA = tuple[int, int, int, int]
+RGBA = Tuple[int, int, int, int]
 
 
 @dataclass

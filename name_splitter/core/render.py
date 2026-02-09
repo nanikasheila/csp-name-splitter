@@ -35,9 +35,9 @@ def write_plan(
     selected_pages: list[int],
     merge_result: MergeResult | None = None,
 ) -> RenderPlan:
-    # plan.jsonを書き出す
+    # plan.yamlを書き出す（JSON互換性のため、JSONでも保存可能だが、デフォルトはYAML）
     out_dir.mkdir(parents=True, exist_ok=True)
-    manifest_path = out_dir / "plan.json"
+    manifest_path = out_dir / "plan.yaml"
     page_entries = []
     for page_index in selected_pages:
         cell = cells[page_index]
@@ -55,7 +55,11 @@ def write_plan(
             "rows": cfg.grid.rows,
             "cols": cfg.grid.cols,
             "order": cfg.grid.order,
-            "margin_px": cfg.grid.margin_px,
+            "margin_px": cfg.grid.margin_px,  # Legacy
+            "margin_top_px": cfg.grid.margin_top_px,
+            "margin_bottom_px": cfg.grid.margin_bottom_px,
+            "margin_left_px": cfg.grid.margin_left_px,
+            "margin_right_px": cfg.grid.margin_right_px,
             "gutter_px": cfg.grid.gutter_px,
         },
         "output": {
@@ -68,7 +72,13 @@ def write_plan(
         "merge": _serialize_merge(merge_result),
         "pages": page_entries,
     }
-    manifest_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    try:
+        import yaml  # type: ignore
+        manifest_path.write_text(yaml.dump(payload, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    except ImportError:
+        # Fallback to JSON if PyYAML not available
+        manifest_path = out_dir / "plan.json"
+        manifest_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return RenderPlan(out_dir=out_dir, manifest_path=manifest_path)
 
 

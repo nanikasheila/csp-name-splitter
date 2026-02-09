@@ -72,8 +72,10 @@ def generate_template_png(
     grid: GridConfig,
     style: TemplateStyle,
     dpi: int,
+    show_page_numbers: bool = False,
 ) -> Path:
-    image = _render_template_image(width_px, height_px, grid, style, dpi)
+    """テンプレートPNGを生成（実際の作業用、デフォルトでページ番号非表示）"""
+    image = _render_template_image(width_px, height_px, grid, style, dpi, show_page_numbers)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     image.save(output_path, format="PNG")
@@ -88,7 +90,9 @@ def build_template_preview_png(
     dpi: int,
     *,
     max_dim: int = 1600,
+    show_page_numbers: bool = True,
 ) -> bytes:
+    """テンプレートプレビューを生成（デフォルトでページ番号表示）"""
     if width_px <= 0 or height_px <= 0:
         raise ConfigError("Template width/height must be positive")
     scale = 1.0
@@ -102,6 +106,10 @@ def build_template_preview_png(
         cols=grid.cols,
         order=grid.order,
         margin_px=max(0, int(round(grid.margin_px * scale))),
+        margin_top_px=max(0, int(round(grid.margin_top_px * scale))),
+        margin_bottom_px=max(0, int(round(grid.margin_bottom_px * scale))),
+        margin_left_px=max(0, int(round(grid.margin_left_px * scale))),
+        margin_right_px=max(0, int(round(grid.margin_right_px * scale))),
         gutter_px=max(0, int(round(grid.gutter_px * scale))),
     )
     scaled_style = TemplateStyle(
@@ -122,7 +130,7 @@ def build_template_preview_png(
         basic_offset_y_mm=style.basic_offset_y_mm,
         draw_basic=style.draw_basic,
     )
-    image = _render_template_image(scaled_width, scaled_height, scaled_grid, scaled_style, scaled_dpi)
+    image = _render_template_image(scaled_width, scaled_height, scaled_grid, scaled_style, scaled_dpi, show_page_numbers)
     buffer = BytesIO()
     image.save(buffer, format="PNG")
     return buffer.getvalue()
@@ -140,11 +148,12 @@ def _render_template_image(
     grid: GridConfig,
     style: TemplateStyle,
     dpi: int,
+    show_page_numbers: bool = True,
 ):
     if width_px <= 0 or height_px <= 0:
         raise ConfigError("Template width/height must be positive")
     try:
-        from PIL import Image, ImageDraw  # type: ignore
+        from PIL import Image, ImageDraw, ImageFont  # type: ignore
     except ImportError as exc:
         raise RuntimeError("Pillow is required to generate template images") from exc
 
@@ -212,6 +221,52 @@ def _render_template_image(
                 style.grid_color,
                 style.grid_width,
             )
+
+    # ページ番号を描画
+    if show_page_numbers and cells:
+        avg_cell_size = ((cells[0].x1 - cells[0].x0) + (cells[0].y1 - cells[0].y0)) / 2
+        font_size = max(12, min(72, int(avg_cell_size * 0.08)))
+        
+        try:
+            font = ImageFont.truetype("arial.ttf", font_size)
+        except Exception:  # noqa: BLE001
+            try:
+                font = ImageFont.load_default()
+            except Exception:  # noqa: BLE001
+                font = None
+        
+        if font:
+            page_number_color = (50, 50, 50, 255)
+            page_number_bg_color = (255, 255, 255, 220)
+            
+            for cell in cells:
+                page_num = cell.index + 1
+                text = str(page_num)
+                
+                try:
+                    bbox = draw.textbbox((0, 0), text, font=font)
+                    text_width = bbox[2] - bbox[0]
+                    text_height = bbox[3] - bbox[1]
+                except Exception:  # noqa: BLE001
+                    try:
+                        text_width, text_height = draw.textsize(text, font=font)  # type: ignore
+                    except Exception:  # noqa: BLE001
+                        continue
+                
+                cell_center_x = (cell.x0 + cell.x1) // 2
+                cell_center_y = (cell.y0 + cell.y1) // 2
+                text_x = cell_center_x - text_width // 2
+                text_y = cell_center_y - text_height // 2
+                
+                padding = max(6, font_size // 3)
+                bg_rect = [
+                    text_x - padding,
+                    text_y - padding,
+                    text_x + text_width + padding,
+                    text_y + text_height + padding,
+                ]
+                draw.rectangle(bg_rect, fill=page_number_bg_color)
+                draw.text((text_x, text_y), text, fill=page_number_color, font=font)
 
     return canvas
 

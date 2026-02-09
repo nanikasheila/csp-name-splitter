@@ -21,7 +21,11 @@ class GridConfig:
     rows: int = 4
     cols: int = 4
     order: str = "rtl_ttb"
-    margin_px: int = 0
+    margin_px: int = 0  # Deprecated: use margin_top_px, etc.
+    margin_top_px: int = 0
+    margin_bottom_px: int = 0
+    margin_left_px: int = 0
+    margin_right_px: int = 0
     gutter_px: int = 0
 
 
@@ -101,12 +105,20 @@ def load_config(path: str | Path) -> Config:
     config_path = Path(path)
     if not config_path.exists():
         raise ConfigError(f"Config not found: {config_path}")
-    try:
-        import yaml  # type: ignore
-    except ImportError as exc:
-        raise ConfigError("PyYAML is required to load config files") from exc
-
-    raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    
+    suffix = config_path.suffix.lower()
+    if suffix in {".yaml", ".yml"}:
+        try:
+            import yaml  # type: ignore
+        except ImportError as exc:
+            raise ConfigError("PyYAML is required to load YAML config files") from exc
+        raw = yaml.safe_load(config_path.read_text(encoding="utf-8"))
+    elif suffix == ".json":
+        import json
+        raw = json.loads(config_path.read_text(encoding="utf-8"))
+    else:
+        raise ConfigError(f"Unsupported config file format: {suffix}. Use .yaml, .yml, or .json")
+    
     if raw is None:
         raw = {}
     if not isinstance(raw, dict):
@@ -125,6 +137,14 @@ def load_config(path: str | Path) -> Config:
     )
 
     input_path = input_section.get("image_path", input_section.get("psd_path", ""))
+    
+    # Backward compatibility: if margin_px exists but 4-direction margins don't, apply to all
+    legacy_margin = int(grid_section.get("margin_px", 0))
+    margin_top = int(grid_section.get("margin_top_px", legacy_margin))
+    margin_bottom = int(grid_section.get("margin_bottom_px", legacy_margin))
+    margin_left = int(grid_section.get("margin_left_px", legacy_margin))
+    margin_right = int(grid_section.get("margin_right_px", legacy_margin))
+    
     config = Config(
         version=int(raw.get("version", 1)),
         input=InputConfig(image_path=str(input_path)),
@@ -132,7 +152,11 @@ def load_config(path: str | Path) -> Config:
             rows=int(grid_section.get("rows", 4)),
             cols=int(grid_section.get("cols", 4)),
             order=str(grid_section.get("order", "rtl_ttb")),
-            margin_px=int(grid_section.get("margin_px", 0)),
+            margin_px=legacy_margin,
+            margin_top_px=margin_top,
+            margin_bottom_px=margin_bottom,
+            margin_left_px=margin_left,
+            margin_right_px=margin_right,
             gutter_px=int(grid_section.get("gutter_px", 0)),
         ),
         merge=merge,
@@ -167,6 +191,10 @@ def validate_config(cfg: Config) -> None:
         raise ConfigError("grid.rows and grid.cols must be positive")
     if cfg.grid.margin_px < 0 or cfg.grid.gutter_px < 0:
         raise ConfigError("grid.margin_px and grid.gutter_px must be >= 0")
+    if cfg.grid.margin_top_px < 0 or cfg.grid.margin_bottom_px < 0:
+        raise ConfigError("grid.margin_top_px and grid.margin_bottom_px must be >= 0")
+    if cfg.grid.margin_left_px < 0 or cfg.grid.margin_right_px < 0:
+        raise ConfigError("grid.margin_left_px and grid.margin_right_px must be >= 0")
     if cfg.grid.order not in ALLOWED_GRID_ORDERS:
         raise ConfigError(f"grid.order must be one of {sorted(ALLOWED_GRID_ORDERS)}")
     if cfg.limits.max_dim_px <= 0:
