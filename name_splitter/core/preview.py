@@ -14,6 +14,7 @@ def build_preview_png(
     *,
     max_dim: int = 1600,
     line_color: tuple[int, int, int, int] = (255, 80, 40, 170),
+    line_width: int = 1,
     show_page_numbers: bool = True,
     page_number_color: tuple[int, int, int, int] = (255, 255, 255, 255),
     page_number_bg_color: tuple[int, int, int, int] = (0, 0, 0, 200),
@@ -53,9 +54,9 @@ def build_preview_png(
 
     draw = ImageDraw.Draw(image)
     
-    # グリッド線を描画
+    # グリッド線を描画（スケールせず固定値で統一）
     for cell in cells:
-        draw.rectangle((cell.x0, cell.y0, cell.x1, cell.y1), outline=line_color, width=2)
+        draw.rectangle((cell.x0, cell.y0, cell.x1, cell.y1), outline=line_color, width=line_width)
     
     # ページ番号を描画
     if show_page_numbers:

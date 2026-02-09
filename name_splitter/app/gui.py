@@ -646,8 +646,7 @@ def main() -> None:
                 return
             try:
                 on_preview(None)
-            except Exception as exc:  # noqa: BLE001
-                # エラーは無視（まだ設定が不完全な場合があるため）
+            except Exception:  # noqa: BLE001
                 pass
 
         def on_config_change(_: ft.ControlEvent) -> None:
@@ -680,7 +679,11 @@ def main() -> None:
                         raise ValueError("Input image is required for preview")
                     msg, cfg = load_config_for_ui()
                     cfg = replace(cfg, grid=grid_cfg)
-                    png = build_preview_png(path, cfg.grid)
+                    # Grid lines 設定を取得
+                    grid_alpha = parse_int(grid_alpha_field.value or "170", "Grid alpha")
+                    grid_line_color = parse_hex_color(grid_color_field.value or "#FF5030", grid_alpha)
+                    grid_line_width = max(1, parse_int(grid_width_field.value or "1", "Grid width"))
+                    png = build_preview_png(path, cfg.grid, line_color=grid_line_color, line_width=grid_line_width)
                     preview_image.src = f"data:image/png;base64,{base64.b64encode(png).decode('ascii')}"
                     set_status(msg)
                 flush()
@@ -800,8 +803,57 @@ def main() -> None:
         input_field.on_blur = auto_preview_if_enabled
         
         # Preview影響フィールド（サイズ情報更新 + 自動プレビュー）
+        # -- 即時バリデーション付きハンドラ --
+        # 整数フィールド → 空 or 整数のみ許可
+        _int_fields = {
+            dpi_field, rows_field, cols_field,
+            finish_alpha_field, basic_alpha_field, grid_alpha_field,
+            finish_line_width_field, basic_line_width_field, grid_width_field,
+        }
+        # 数値(小数可)フィールド
+        _num_fields = {
+            margin_top_field, margin_bottom_field, margin_left_field, margin_right_field,
+            gutter_field, custom_width_field, custom_height_field,
+            finish_width_field, finish_height_field,
+            finish_offset_x_field, finish_offset_y_field,
+            basic_width_field, basic_height_field,
+            basic_offset_x_field, basic_offset_y_field,
+        }
+
+        def _validate_field(fld: ft.TextField) -> None:
+            """フィールドの値を即時バリデーション → error_text設定"""
+            val = (fld.value or "").strip()
+            if not val:
+                fld.error_text = None
+                return
+            if fld in _int_fields:
+                try:
+                    int(val)
+                    fld.error_text = None
+                except ValueError:
+                    fld.error_text = "整数を入力"
+            elif fld in _num_fields:
+                try:
+                    float(val)
+                    fld.error_text = None
+                except ValueError:
+                    fld.error_text = "数値を入力"
+            else:
+                fld.error_text = None
+
         def make_preview_handler():
+            """on_change用: バリデーション + サイズ情報更新のみ（軽量）"""
             def handler(e):
+                if hasattr(e, "control") and isinstance(e.control, ft.TextField):
+                    _validate_field(e.control)
+                update_size_info(e)
+            return handler
+
+        def make_blur_handler():
+            """on_blur用: バリデーション + サイズ情報更新 + プレビュー更新"""
+            def handler(e):
+                if hasattr(e, "control") and isinstance(e.control, ft.TextField):
+                    _validate_field(e.control)
                 update_size_info(e)
                 auto_preview_if_enabled(e)
             return handler
@@ -819,7 +871,7 @@ def main() -> None:
         )
         for _fld in preview_affected_fields:
             _fld.on_change = make_preview_handler()
-            _fld.on_blur = make_preview_handler()
+            _fld.on_blur = make_blur_handler()
         
         # Margin単位切替時の専用ハンドラ（値の自動換算）
         def on_margin_unit_change(e):
@@ -935,19 +987,19 @@ def main() -> None:
         if hasattr(gutter_unit_field, "on_select"):
             gutter_unit_field.on_select = on_gutter_unit_change
         
-        # Preview影響Dropdown
+        # Preview影響Dropdown（選択＝確定なので即時プレビュー）
         preview_affected_dropdowns = (page_size_field, orientation_field, order_field,
                                        finish_size_mode_field, basic_size_mode_field)
         for _dd in preview_affected_dropdowns:
-            handler = make_preview_handler()
+            handler = make_blur_handler()
             if hasattr(_dd, "on_select"):
                 _dd.on_select = handler
             if hasattr(_dd, "on_text_change"):
                 _dd.on_text_change = handler
         
-        # Template checkboxes
+        # Template checkboxes（トグル＝確定なので即時プレビュー）
         for _cb in (draw_finish_field, draw_basic_field):
-            _cb.on_change = make_preview_handler()
+            _cb.on_change = make_blur_handler()
 
         # ============================================================== #
         #  ボタン                                                         #
@@ -981,17 +1033,38 @@ def main() -> None:
         # ============================================================== #
         tab_template = ft.Container(
             content=ft.Column([
-                # Finish frame
-                ft.Text("Finish frame", weight=ft.FontWeight.BOLD, size=12),
-                ft.Row([draw_finish_field, finish_size_mode_field, finish_width_field, finish_height_field], wrap=True),
-                ft.Row([finish_offset_x_field, finish_offset_y_field, finish_color_field, finish_alpha_field, finish_line_width_field], wrap=True),
-                # Basic frame
-                ft.Text("Basic frame", weight=ft.FontWeight.BOLD, size=12),
-                ft.Row([draw_basic_field, basic_size_mode_field, basic_width_field, basic_height_field], wrap=True),
-                ft.Row([basic_offset_x_field, basic_offset_y_field, basic_color_field, basic_alpha_field, basic_line_width_field], wrap=True),
-                # Grid visual
-                ft.Text("Grid lines", weight=ft.FontWeight.BOLD, size=12),
-                ft.Row([grid_color_field, grid_alpha_field, grid_width_field]),
+                # Finish frame (accordion)
+                ft.ExpansionPanelList(
+                    controls=[
+                        ft.ExpansionPanel(
+                            header=ft.Row([draw_finish_field, ft.Text("Finish frame", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
+                            content=ft.Column([
+                                ft.Row([finish_size_mode_field, finish_width_field, finish_height_field], wrap=True),
+                                ft.Row([finish_offset_x_field, finish_offset_y_field, finish_color_field, finish_alpha_field, finish_line_width_field], wrap=True),
+                            ], spacing=4),
+                            expanded=False,
+                            can_tap_header=True,
+                        ),
+                    ],
+                    elevation=0,
+                    spacing=0,
+                ),
+                # Basic frame (accordion)
+                ft.ExpansionPanelList(
+                    controls=[
+                        ft.ExpansionPanel(
+                            header=ft.Row([draw_basic_field, ft.Text("Basic frame", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
+                            content=ft.Column([
+                                ft.Row([basic_size_mode_field, basic_width_field, basic_height_field], wrap=True),
+                                ft.Row([basic_offset_x_field, basic_offset_y_field, basic_color_field, basic_alpha_field, basic_line_width_field], wrap=True),
+                            ], spacing=4),
+                            expanded=False,
+                            can_tap_header=True,
+                        ),
+                    ],
+                    elevation=0,
+                    spacing=0,
+                ),
                 ft.Divider(height=4),
                 # Template output
                 ft.Row([
@@ -1030,6 +1103,8 @@ def main() -> None:
                 ft.Row([ft.Icon(ft.Icons.GRID_VIEW, size=16), ft.Text("Grid settings", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
                 ft.Row([rows_field, cols_field, order_field], wrap=True),
                 ft.Row([gutter_unit_field, gutter_field], wrap=True),
+                ft.Row([grid_color_field, grid_alpha_field, grid_width_field], wrap=True),
+                ft.Divider(height=2),
                 ft.Row([ft.Icon(ft.Icons.CROP_FREE, size=16), ft.Text("Margins", weight=ft.FontWeight.BOLD, size=12)], spacing=4),
                 ft.Row([margin_unit_field, margin_top_field, margin_bottom_field, margin_left_field, margin_right_field], wrap=True),
             ], spacing=4, scroll=ft.ScrollMode.AUTO),

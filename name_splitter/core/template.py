@@ -114,7 +114,7 @@ def build_template_preview_png(
     )
     scaled_style = TemplateStyle(
         grid_color=style.grid_color,
-        grid_width=_scale_width(style.grid_width, scale),
+        grid_width=style.grid_width,  # スケールせず固定値で統一
         finish_color=style.finish_color,
         finish_width=_scale_width(style.finish_width, scale),
         finish_width_mm=style.finish_width_mm,
