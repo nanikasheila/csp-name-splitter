@@ -193,5 +193,6 @@ class UiElements:
     progress_bar: ProgressBar
     status_text: Text
     preview_image: Image
+    preview_viewer: InteractiveViewer
     run_btn: Button
     cancel_btn: Button
