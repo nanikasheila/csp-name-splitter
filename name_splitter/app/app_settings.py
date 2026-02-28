@@ -1,0 +1,115 @@
+"""Application-level settings persistence (window size, theme, recent files).
+
+Why: Users expect their window layout, theme preference, and recently used
+     file paths to survive across application restarts. Without persistence,
+     every launch starts from scratch.
+How: Stores a compact JSON file in the platform-appropriate app data
+     directory. Settings are loaded once on startup and saved on each
+     significant state change (window resize, theme toggle, file open).
+"""
+from __future__ import annotations
+
+import json
+import os
+from dataclasses import asdict, dataclass, field
+from pathlib import Path
+
+_MAX_RECENT_ENTRIES: int = 5
+
+
+def _settings_path() -> Path:
+    """Determine the platform-appropriate path for app settings.
+
+    Why: Each OS has a conventional location for per-user application data;
+         following the convention makes the file discoverable and avoids
+         polluting the home directory.
+    How: Uses %APPDATA% on Windows, ~/.config on Linux/macOS.
+
+    Returns:
+        Absolute Path to the settings JSON file.
+    """
+    if os.name == "nt":
+        base = Path(os.environ.get("APPDATA", str(Path.home())))
+    else:
+        base = Path.home() / ".config"
+    return base / "csp-name-splitter" / "app_settings.json"
+
+
+@dataclass
+class AppSettings:
+    """Persistent application settings.
+
+    Why: Centralising all persistent state in a single dataclass makes
+         serialisation straightforward and keeps gui.py free of ad-hoc
+         file I/O logic.
+    How: Plain dataclass with default values matching the first-launch
+         experience. add_recent_* methods manage bounded FIFO lists.
+    """
+
+    window_width: int = 1200
+    window_height: int = 850
+    theme_mode: str = "light"
+    recent_configs: list[str] = field(default_factory=list)
+    recent_inputs: list[str] = field(default_factory=list)
+
+    def add_recent_config(self, path: str) -> None:
+        """Record a config file path, keeping most-recent first.
+
+        Why: MRU list size must be bounded to avoid unbounded growth.
+        How: Removes duplicate if present, prepends, truncates to limit.
+        """
+        if path in self.recent_configs:
+            self.recent_configs.remove(path)
+        self.recent_configs.insert(0, path)
+        self.recent_configs = self.recent_configs[:_MAX_RECENT_ENTRIES]
+
+    def add_recent_input(self, path: str) -> None:
+        """Record an input image path, keeping most-recent first.
+
+        Why: Same bounded MRU rationale as add_recent_config.
+        How: Same dedup-then-prepend strategy.
+        """
+        if path in self.recent_inputs:
+            self.recent_inputs.remove(path)
+        self.recent_inputs.insert(0, path)
+        self.recent_inputs = self.recent_inputs[:_MAX_RECENT_ENTRIES]
+
+
+def load_app_settings() -> AppSettings:
+    """Load settings from disk, falling back to defaults on any error.
+
+    Why: The app must always start even if the settings file is corrupt or
+         missing. Silently falling back to defaults is the safest approach.
+    How: Reads JSON, filters known fields, and unpacks into AppSettings.
+
+    Returns:
+        AppSettings populated from disk or fresh defaults.
+    """
+    path = _settings_path()
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            known_fields = {f for f in AppSettings.__dataclass_fields__}
+            filtered = {k: v for k, v in data.items() if k in known_fields}
+            return AppSettings(**filtered)
+        except Exception:  # noqa: BLE001
+            pass
+    return AppSettings()
+
+
+def save_app_settings(settings: AppSettings) -> None:
+    """Persist settings to disk, creating directories as needed.
+
+    Why: Settings must survive application restarts. Writing on each
+         significant state change ensures minimal data loss on crash.
+    How: Serialises the dataclass to JSON and writes atomically.
+    """
+    path = _settings_path()
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(asdict(settings), indent=2), encoding="utf-8")
+    except Exception:  # noqa: BLE001
+        pass  # Why: Failure to persist settings must never crash the app
+
+
+__all__ = ["AppSettings", "load_app_settings", "save_app_settings"]

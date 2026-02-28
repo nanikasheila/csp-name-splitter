@@ -118,6 +118,15 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
         ts = datetime.now().strftime("%H:%M:%S")
         self.w.ui.log_field.value = f"{self.w.ui.log_field.value or ''}{ts} {msg}\n"
 
+    def add_error_log(self, msg: str) -> None:
+        """Append an error-prefixed timestamped line to the log.
+
+        Why: Error lines must stand out when users scan the log to find
+             what went wrong among many informational entries.
+        How: Delegates to add_log with an [ERROR] prefix for grep-ability.
+        """
+        self.add_log(f"[ERROR] {msg}")
+
     def set_status(self, msg: str) -> None:
         """Set the status bar text.
 
@@ -261,7 +270,7 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
             self.flush()
         except (ConfigError, ImageReadError, ValueError, RuntimeError) as exc:
             self.w.ui.preview_loading_ring.visible = False
-            self.add_log(f"Error: {exc}")
+            self.add_error_log(str(exc))
             self.set_status("Error")
             self.show_error(str(exc))
             self.flush()
@@ -307,7 +316,7 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
             self.w.ui.progress_bar.color = "green"
             self.flush()
         except (ConfigError, LimitExceededError, ImageReadError, ValueError, RuntimeError) as exc:
-            self.add_log(f"Error: {exc}")
+            self.add_error_log(str(exc))
             self.set_status("Error")
             self.w.ui.progress_bar.color = "red"
             self.show_error(str(exc))
@@ -369,7 +378,7 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
             self.set_status("Template written")
             self.flush()
         except (ConfigError, ValueError, RuntimeError) as exc:
-            self.add_log(f"Error: {exc}")
+            self.add_error_log(str(exc))
             self.set_status("Error")
             self.show_error(str(exc))
             self.flush()
@@ -407,7 +416,7 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
             self.add_log("Log copied")
             self.set_status("Log copied")
         except Exception as exc:  # noqa: BLE001
-            self.add_log(f"Error: {exc}")
+            self.add_error_log(str(exc))
         self.flush()
 
     def on_copy_log(self, _: Any) -> None:
@@ -446,7 +455,7 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
             self.add_log("Settings reset to defaults")
             self.set_status("Reset to defaults")
         except Exception as exc:  # noqa: BLE001
-            self.add_log(f"Reset error: {exc}")
+            self.add_error_log(f"Reset: {exc}")
         self.flush()
 
     def on_open_output_folder(self, _: Any) -> None:
@@ -460,11 +469,11 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
         """
         out_dir = (self.w.image.out_dir_field.value or "").strip()
         if not out_dir:
-            self.add_log("No output directory specified")
+            self.add_error_log("No output directory specified")
             self.flush()
             return
         if not os.path.isdir(out_dir):
-            self.add_log(f"Directory not found: {out_dir}")
+            self.add_error_log(f"Directory not found: {out_dir}")
             self.flush()
             return
         try:
@@ -476,7 +485,7 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
                 subprocess.Popen(["xdg-open", out_dir])  # noqa: S603, S607
             self.add_log(f"Opened folder: {out_dir}")
         except Exception as exc:  # noqa: BLE001
-            self.add_log(f"Failed to open folder: {exc}")
+            self.add_error_log(f"Failed to open folder: {exc}")
         self.flush()
 
     def on_tab_change(self, e: Any) -> None:
