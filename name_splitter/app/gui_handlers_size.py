@@ -10,6 +10,7 @@ How: Pure mixin — no __init__, relies on GuiHandlers to set self.w,
 """
 from __future__ import annotations
 
+import threading
 from typing import TYPE_CHECKING, Any
 
 from name_splitter.core.config import GridConfig
@@ -349,15 +350,44 @@ class GuiHandlersSizeMixin:
             self.w.common.size_info_text.color = "red"
         self.flush()
 
-    def auto_preview_if_enabled(self, _: Any = None) -> None:
-        """Trigger a preview refresh if auto-preview is enabled.
+    # Debounce state for auto-preview
+    _preview_timer: threading.Timer | None = None
+    _preview_debounce_seconds: float = 0.3
 
-        Why: Many field-change events should automatically refresh the
-             preview; a guard prevents updates while config is being loaded
-             or when the Image Split tab has no input image.
-        How: Checks state.auto_preview_enabled and the active tab/input
-             before calling on_preview, suppressing all exceptions to avoid
-             crashing the event loop.
+    def auto_preview_if_enabled(self, _: Any = None) -> None:
+        """Trigger a debounced preview refresh if auto-preview is enabled.
+
+        Why: Many field-change events fire in rapid succession (tab switches,
+             slider drags, unit conversions). Rebuilding the full preview on
+             every event wastes CPU. Only the last request matters.
+        How: Resets a 300 ms one-shot timer on each call. When the timer
+             fires without being cancelled, _execute_preview runs once.
+             Guards for auto_preview_enabled and empty-input are checked
+             both at schedule time (early exit) and at execution time
+             (state may have changed during the delay).
+        """
+        if not self.state.auto_preview_enabled:
+            return
+        if self.state.is_image_split_tab() and not (self.w.image.input_field.value or "").strip():
+            return
+        if self._preview_timer is not None:
+            self._preview_timer.cancel()
+        self._preview_timer = threading.Timer(
+            self._preview_debounce_seconds,
+            self._execute_preview,
+        )
+        self._preview_timer.daemon = True
+        self._preview_timer.start()
+
+    def _execute_preview(self) -> None:
+        """Run the actual preview generation after debounce delay.
+
+        Why: Separated from the timer scheduling so the guard checks can
+             be re-evaluated at execution time — the user may have switched
+             tabs or cleared the input field during the debounce window.
+        How: Re-checks auto_preview_enabled and input state, then delegates
+             to on_preview. All exceptions are suppressed to avoid crashing
+             the Flet event loop.
         """
         if not self.state.auto_preview_enabled:
             return
