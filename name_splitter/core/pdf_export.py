@@ -87,4 +87,17 @@ def export_pdf(
         append_images=remaining_pages,
     )
 
+    # Why: Pillow save may silently succeed without writing (e.g. disk full)
+    # How: Verify output file exists and is non-empty after save
+    resolved = output_path.resolve()
+    if not resolved.exists():
+        raise RuntimeError(
+            f"PDF export completed without error but file was not created: {resolved}"
+        )
+    file_size = resolved.stat().st_size
+    if file_size == 0:
+        raise RuntimeError(
+            f"PDF export created an empty file (0 bytes): {resolved}"
+        )
+
     return output_path

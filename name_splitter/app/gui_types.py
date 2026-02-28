@@ -24,6 +24,7 @@ class FletTextField(Protocol):
     keyboard_type: Any
     read_only: bool
     multiline: bool
+    error_text: Optional[str]
     on_change: Optional[Callable[[Any], None]]
 
 
@@ -66,11 +67,10 @@ class FletImage(Protocol):
 
 
 class FletButton(Protocol):
-    """Protocol for Flet Button widgets."""
-    text: str
+    """Protocol for Flet Button widgets (ElevatedButton, OutlinedButton, etc)."""
     icon: Any
     disabled: bool
-    on_click: Optional[Callable[[Any], None]]
+    on_click: Any
 
 
 class FletInteractiveViewer(Protocol):
@@ -155,6 +155,7 @@ class ImageFields:
     input_field: TextField
     out_dir_field: TextField
     test_page_field: TextField
+    output_format_field: Dropdown
 
 
 @dataclass

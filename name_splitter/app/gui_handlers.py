@@ -161,6 +161,29 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
         """
         self.page.update()
 
+    def flush_from_thread(self) -> None:
+        """Commit pending changes from a background thread.
+
+        Why: page.update() called from a page.run_thread background thread
+             may not trigger an immediate visual refresh in Flet desktop;
+             the display only repaints on user interaction (e.g. tab switch).
+        How: Calls control-level update() on progress_bar, status_text, and
+             log_field individually, which sends targeted WebSocket messages
+             and reliably triggers a repaint from non-main threads.
+        """
+        try:
+            self.w.ui.progress_bar.update()
+            self.w.ui.status_text.update()
+            self.w.ui.log_field.update()
+        except Exception:  # noqa: BLE001
+            # Why: Flet may raise if controls are not yet mounted or page is
+            #      closing; fall back to page.update() which is better than
+            #      nothing.
+            try:
+                self.page.update()
+            except Exception:  # noqa: BLE001
+                pass
+
     def update_color_swatches(self) -> None:
         """Sync color swatch containers with their corresponding text fields.
 
@@ -190,10 +213,29 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
         """
         try:
             import flet as ft
-            self.page.open(ft.SnackBar(
+            self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
                 content=ft.Text(str(msg)),
                 bgcolor="red",
                 duration=5000,
+            ))
+        except Exception:  # noqa: BLE001
+            pass
+
+    def show_success(self, msg: str) -> None:
+        """Display a success message in a transient snackbar.
+
+        Why: Users need visible feedback when an action completes
+             successfully, especially when the result is a file write
+             that produces no other visible change in the UI.
+        How: Opens a green-background SnackBar with a 3-second duration.
+             The try/except guard prevents crashes in test environments.
+        """
+        try:
+            import flet as ft
+            self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
+                content=ft.Text(str(msg)),
+                bgcolor="green",
+                duration=3000,
             ))
         except Exception:  # noqa: BLE001
             pass
@@ -291,6 +333,10 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
                 raise ValueError("Input image is required")
             msg, cfg = self.load_config_for_ui()
             cfg = replace(cfg, grid=self.build_grid_config())
+            # Why: GUI output format dropdown overrides config container setting
+            # How: Replace output config with user-selected container format
+            output_format = (self.w.image.output_format_field.value or "png").strip()
+            cfg = replace(cfg, output=replace(cfg.output, container=output_format))
             out = (self.w.image.out_dir_field.value or "").strip() or None
             tp = self.w.image.test_page_field.value.strip() if self.w.image.test_page_field.value else ""
             tp_val = int(tp) if tp else None
@@ -302,7 +348,7 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
                 pct = int(ev.done / ev.total * 100) if ev.total else 0
                 self.set_status(f"{ev.phase} {ev.done}/{ev.total} ({pct}%)")
                 self.add_log(f"[{ev.phase}] {ev.done}/{ev.total} {ev.message}".strip())
-                self.flush()
+                self.flush_from_thread()
 
             result = run_job(
                 path, cfg,
@@ -313,19 +359,31 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
             )
             self.add_log(f"Plan written to {result.plan.manifest_path}")
             self.add_log(f"Pages: {result.page_count}")
+            if result.pdf_path:
+                resolved = result.pdf_path.resolve()
+                size_kb = resolved.stat().st_size / 1024
+                self.add_log(f"PDF exported: {resolved} ({size_kb:.1f} KB)")
+                self.show_success(f"PDF exported: {resolved.name} ({size_kb:.1f} KB)")
             self.set_status("Done")
             self.w.ui.progress_bar.color = "green"
-            self.flush()
+            self.flush_from_thread()
         except (ConfigError, LimitExceededError, ImageReadError, ValueError, RuntimeError) as exc:
             self.add_error_log(str(exc))
             self.set_status("Error")
             self.w.ui.progress_bar.color = "red"
             self.show_error(str(exc))
-            self.flush()
+            self.flush_from_thread()
         finally:
             self.w.ui.run_btn.disabled = False
             self.w.ui.cancel_btn.disabled = True
-            self.flush()
+            self.flush_from_thread()
+            # Why: control-level update in flush_from_thread does not cover
+            #      run_btn / cancel_btn; a final page.update ensures button
+            #      states propagate.
+            try:
+                self.page.update()
+            except Exception:  # noqa: BLE001
+                pass
 
     def on_run(self, _: Any) -> None:
         """Handle Run button click — start image-split job in a thread.
@@ -377,12 +435,12 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
             )
             self.add_log(f"Template written: {rpath}")
             self.set_status("Template written")
-            self.flush()
+            self.flush_from_thread()
         except (ConfigError, ValueError, RuntimeError) as exc:
             self.add_error_log(str(exc))
             self.set_status("Error")
             self.show_error(str(exc))
-            self.flush()
+            self.flush_from_thread()
 
     def on_generate_template(self, _: Any) -> None:
         """Handle Generate Template button click.
@@ -438,6 +496,88 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
         """
         self.w.ui.log_field.value = ""
         self.set_status("Idle")
+        self.flush()
+
+    def on_save_config(self, _: Any) -> None:
+        """Handle Save Config button click — export current settings to YAML.
+
+        Why: Users tweaking settings in the GUI need a way to persist their
+             configuration so it can be reloaded later or shared.
+        How: Builds a config dict from current UI field values, serializes
+             to YAML, and writes to the path in config_field (or prompts
+             via snackbar if no path is set).
+        """
+        try:
+            import yaml  # type: ignore[import-untyped]
+        except ImportError:
+            self.add_error_log("PyYAML is required to save config files")
+            self.flush()
+            return
+
+        config_path = (self.w.common.config_field.value or "").strip()
+        if not config_path:
+            self.add_error_log("Set a config file path first (Config tab)")
+            self.show_error("Config file path is empty. Enter a path or pick a file.")
+            self.flush()
+            return
+
+        try:
+            grid_cfg = self.build_grid_config()
+            output_format = (self.w.image.output_format_field.value or "png").strip()
+
+            config_dict = {
+                "version": 1,
+                "input": {"image_path": ""},
+                "grid": {
+                    "rows": grid_cfg.rows,
+                    "cols": grid_cfg.cols,
+                    "order": grid_cfg.order,
+                    "margin_top_px": grid_cfg.margin_top_px,
+                    "margin_bottom_px": grid_cfg.margin_bottom_px,
+                    "margin_left_px": grid_cfg.margin_left_px,
+                    "margin_right_px": grid_cfg.margin_right_px,
+                    "gutter_px": grid_cfg.gutter_px,
+                    "gutter_unit": grid_cfg.gutter_unit,
+                    "margin_unit": grid_cfg.margin_unit,
+                    "dpi": grid_cfg.dpi,
+                    "page_size_name": grid_cfg.page_size_name,
+                    "orientation": grid_cfg.orientation,
+                    "page_width_px": grid_cfg.page_width_px,
+                    "page_height_px": grid_cfg.page_height_px,
+                    "page_size_unit": grid_cfg.page_size_unit,
+                },
+                "merge": {
+                    "group_rules": [],
+                    "layer_rules": [],
+                    "include_hidden_layers": False,
+                },
+                "output": {
+                    "out_dir": "",
+                    "page_basename": "page_{page:03d}",
+                    "layer_stack": ["flat"],
+                    "raster_ext": "png",
+                    "container": output_format,
+                    "layout": "layers",
+                },
+                "limits": {
+                    "max_dim_px": 30000,
+                    "on_exceed": "error",
+                },
+            }
+
+            from pathlib import Path
+            path = Path(config_path)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(
+                yaml.dump(config_dict, allow_unicode=True, sort_keys=False),
+                encoding="utf-8",
+            )
+            self.add_log(f"Config saved to {config_path}")
+            self.set_status("Config saved")
+            self.show_success(f"Config saved to {config_path}")
+        except Exception as exc:  # noqa: BLE001
+            self.add_error_log(f"Save config: {exc}")
+            self.show_error(str(exc))
         self.flush()
 
     def on_reset_defaults(self, _: Any) -> None:
