@@ -7,6 +7,7 @@ from pathlib import Path
 from .config import GridConfig
 from .errors import ConfigError
 from .grid import compute_cells
+from .preview import _get_font
 
 PAPER_SIZES_MM: dict[str, tuple[float, float]] = {
     "A4": (210.0, 297.0),
@@ -153,7 +154,7 @@ def _render_template_image(
     if width_px <= 0 or height_px <= 0:
         raise ConfigError("Template width/height must be positive")
     try:
-        from PIL import Image, ImageDraw, ImageFont
+        from PIL import Image, ImageDraw
     except ImportError as exc:
         raise RuntimeError("Pillow is required to generate template images") from exc
 
@@ -222,18 +223,11 @@ def _render_template_image(
                 style.grid_width,
             )
 
-    # ページ番号を描画
+    # Page numbers — uses cached font loader from preview module
     if show_page_numbers and cells:
         avg_cell_size = ((cells[0].x1 - cells[0].x0) + (cells[0].y1 - cells[0].y0)) / 2
         font_size = max(12, min(72, int(avg_cell_size * 0.08)))
-        
-        try:
-            font: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = ImageFont.truetype("arial.ttf", font_size)
-        except Exception:  # noqa: BLE001
-            try:
-                font = ImageFont.load_default()
-            except Exception:  # noqa: BLE001
-                font = None
+        font = _get_font(font_size)
         
         if font:
             page_number_color = (50, 50, 50, 255)
