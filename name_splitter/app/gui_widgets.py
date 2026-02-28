@@ -1,11 +1,17 @@
 """Widget builders for CSP Name Splitter GUI.
 
-This module provides the WidgetBuilder class which creates and organizes
-all GUI widgets (TextFields, Dropdowns, Buttons, etc.) and layout structures.
+Why: gui.py requires a clean way to create all Flet widget instances
+     (TextFields, Dropdowns, Buttons, etc.) without embedding widget
+     construction directly in the application entry-point.
+How: WidgetBuilder inherits WidgetLayoutMixin (gui_widgets_layout.py)
+     which provides the layout-assembly methods. This file focuses on
+     widget instantiation (create_* methods).
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Callable
+from typing import TYPE_CHECKING, Any
+
+from name_splitter.app.gui_widgets_layout import WidgetLayoutMixin
 
 if TYPE_CHECKING:
     from name_splitter.app.gui_types import (
@@ -16,7 +22,6 @@ if TYPE_CHECKING:
         ProgressBar,
         Image,
         InteractiveViewer,
-        Widget,
     )
 
 # TRANSPARENT_PNG_BASE64 for preview image
@@ -26,14 +31,26 @@ TRANSPARENT_PNG_BASE64 = (
 )
 
 
-class WidgetBuilder:
-    """Builds all GUI widgets and layout structures for CSP Name Splitter."""
-    
-    def __init__(self, ft: any):  # type: ignore
-        """Initialize WidgetBuilder with Flet module.
-        
+class WidgetBuilder(WidgetLayoutMixin):
+    """Builds all GUI widgets and layout structures for CSP Name Splitter.
+
+    Why: Separating widget construction from gui.py keeps the entry-point
+         concise and makes each widget's default values easy to locate.
+    How: Inherits WidgetLayoutMixin for layout-assembly methods. create_*
+         methods return plain dicts so gui.py can unpack them into typed
+         dataclasses (CommonFields, ImageFields, etc.).
+    """
+
+    def __init__(self, ft: Any) -> None:  # type: ignore[misc]
+        """Initialize WidgetBuilder with the Flet module.
+
+        Why: Flet is imported lazily inside main() to avoid a hard import
+             dependency at module level (allows tests without flet installed).
+        How: Stores the module reference in self.ft so all create_* and
+             build_* methods (from WidgetLayoutMixin) can access it.
+
         Args:
-            ft: The Flet module (imported as 'import flet as ft')
+            ft: The flet module (imported as 'import flet as ft')
         """
         self.ft = ft
     
@@ -290,232 +307,6 @@ class WidgetBuilder:
         )
         
         return elements
-    
-    def build_common_settings_area(
-        self, fields: dict[str, TextField | Dropdown | Text], pick_config: Callable[[any], None]  # type: ignore
-    ) -> Widget:
-        """Build common settings area (config, page size, grid, margin).
-        
-        Args:
-            fields: Dictionary containing all field widgets
-            pick_config: FilePicker function for config selection
-            
-        Returns:
-            ft.Container with common settings layout
-        """
-        ft = self.ft
-        
-        return ft.Container(
-            content=ft.Column([
-                # Config file
-                ft.Row([
-                    ft.Icon(ft.Icons.DESCRIPTION, size=16),
-                    ft.Text("Config file", weight=ft.FontWeight.BOLD, size=12)
-                ], spacing=4),
-                ft.Row([
-                    fields["config_field"],
-                    ft.IconButton(
-                        icon=ft.Icons.SETTINGS,
-                        tooltip="Select config YAML/JSON",
-                        on_click=pick_config,
-                    ),
-                ]),
-                ft.Divider(height=2),
-                # Page size & DPI
-                ft.Row([
-                    ft.Icon(ft.Icons.STRAIGHTEN, size=16),
-                    ft.Text("Page size & DPI", weight=ft.FontWeight.BOLD, size=12)
-                ], spacing=4),
-                ft.Row([
-                    fields["page_size_field"],
-                    fields["orientation_field"],
-                    fields["dpi_field"]
-                ], wrap=True),
-                ft.Row([
-                    fields["custom_size_unit_field"],
-                    fields["custom_width_field"],
-                    fields["custom_height_field"]
-                ], wrap=True),
-                ft.Container(
-                    content=fields["size_info_text"],
-                    bgcolor=ft.Colors.SURFACE_CONTAINER,
-                    border_radius=6,
-                    padding=ft.Padding(8, 4, 8, 4),
-                ),
-                ft.Divider(height=2),
-                # Grid settings
-                ft.Row([
-                    ft.Icon(ft.Icons.GRID_VIEW, size=16),
-                    ft.Text("Grid settings", weight=ft.FontWeight.BOLD, size=12)
-                ], spacing=4),
-                ft.Row([
-                    fields["rows_field"],
-                    fields["cols_field"],
-                    fields["order_field"]
-                ], wrap=True),
-                ft.Row([
-                    fields["gutter_unit_field"],
-                    fields["gutter_field"]
-                ], wrap=True),
-                ft.Row([
-                    fields["grid_color_field"],
-                    fields["grid_alpha_field"],
-                    fields["grid_width_field"]
-                ], wrap=True),
-                ft.Divider(height=2),
-                ft.Row([
-                    ft.Icon(ft.Icons.CROP_FREE, size=16),
-                    ft.Text("Margins", weight=ft.FontWeight.BOLD, size=12)
-                ], spacing=4),
-                ft.Row([
-                    fields["margin_unit_field"],
-                    fields["margin_top_field"],
-                    fields["margin_bottom_field"],
-                    fields["margin_left_field"],
-                    fields["margin_right_field"]
-                ], wrap=True),
-            ], spacing=4, scroll=ft.ScrollMode.AUTO),
-            padding=ft.Padding(8, 4, 8, 4),
-        )
-    
-    def build_tab_image(
-        self,
-        fields: dict[str, TextField],
-        run_btn: Widget,
-        cancel_btn: Widget,
-        pick_input: Callable[[any], None],  # type: ignore
-        pick_out_dir: Callable[[any], None],  # type: ignore
-    ) -> Widget:
-        """Build Image Split tab content.
-        
-        Args:
-            fields: Dictionary containing image split field widgets
-            run_btn: Run button widget
-            cancel_btn: Cancel button widget
-            pick_input: FilePicker function for input selection
-            pick_out_dir: FilePicker function for output dir selection
-            
-        Returns:
-            ft.Container with Image Split tab layout
-        """
-        ft = self.ft
-        
-        return ft.Container(
-            content=ft.Column([
-                ft.Row([
-                    fields["input_field"],
-                    ft.IconButton(
-                        icon=ft.Icons.FOLDER_OPEN,
-                        tooltip="Select image",
-                        on_click=pick_input,
-                    ),
-                ]),
-                ft.Row([
-                    fields["out_dir_field"],
-                    ft.IconButton(
-                        icon=ft.Icons.FOLDER,
-                        tooltip="Select output dir",
-                        on_click=pick_out_dir,
-                    ),
-                    fields["test_page_field"],
-                ]),
-                ft.Row([run_btn, cancel_btn]),
-            ], spacing=6, scroll=ft.ScrollMode.AUTO),
-            padding=ft.Padding(8, 6, 8, 6),
-        )
-    
-    def build_tab_template(
-        self,
-        fields: dict[str, TextField | Dropdown | Checkbox],
-        tmpl_btn: Widget,
-        pick_template_out: Callable[[any], None],  # type: ignore
-    ) -> Widget:
-        """Build Template tab content.
-        
-        Args:
-            fields: Dictionary containing template field widgets
-            tmpl_btn: Generate template button widget
-            pick_template_out: FilePicker function for template output selection
-            
-        Returns:
-            ft.Container with Template tab layout
-        """
-        ft = self.ft
-        
-        return ft.Container(
-            content=ft.Column([
-                # Finish frame (accordion)
-                ft.ExpansionPanelList(
-                    controls=[
-                        ft.ExpansionPanel(
-                            header=ft.Row([
-                                fields["draw_finish_field"],
-                                ft.Text("Finish frame", weight=ft.FontWeight.BOLD, size=12)
-                            ], spacing=4),
-                            content=ft.Column([
-                                ft.Row([
-                                    fields["finish_size_mode_field"],
-                                    fields["finish_width_field"],
-                                    fields["finish_height_field"]
-                                ], wrap=True),
-                                ft.Row([
-                                    fields["finish_offset_x_field"],
-                                    fields["finish_offset_y_field"],
-                                    fields["finish_color_field"],
-                                    fields["finish_alpha_field"],
-                                    fields["finish_line_width_field"]
-                                ], wrap=True),
-                            ], spacing=4),
-                            expanded=False,
-                            can_tap_header=True,
-                        ),
-                    ],
-                    elevation=0,
-                    spacing=0,
-                ),
-                # Basic frame (accordion)
-                ft.ExpansionPanelList(
-                    controls=[
-                        ft.ExpansionPanel(
-                            header=ft.Row([
-                                fields["draw_basic_field"],
-                                ft.Text("Basic frame", weight=ft.FontWeight.BOLD, size=12)
-                            ], spacing=4),
-                            content=ft.Column([
-                                ft.Row([
-                                    fields["basic_size_mode_field"],
-                                    fields["basic_width_field"],
-                                    fields["basic_height_field"]
-                                ], wrap=True),
-                                ft.Row([
-                                    fields["basic_offset_x_field"],
-                                    fields["basic_offset_y_field"],
-                                    fields["basic_color_field"],
-                                    fields["basic_alpha_field"],
-                                    fields["basic_line_width_field"]
-                                ], wrap=True),
-                            ], spacing=4),
-                            expanded=False,
-                            can_tap_header=True,
-                        ),
-                    ],
-                    elevation=0,
-                    spacing=0,
-                ),
-                ft.Divider(height=4),
-                # Template output
-                ft.Row([
-                    fields["template_out_field"],
-                    ft.IconButton(
-                        icon=ft.Icons.SAVE,
-                        tooltip="Save template PNG",
-                        on_click=pick_template_out,
-                    ),
-                ]),
-                ft.Row([tmpl_btn]),
-            ], spacing=4, scroll=ft.ScrollMode.AUTO),
-            padding=ft.Padding(8, 6, 8, 6),
-        )
 
 
 __all__ = ["WidgetBuilder", "TRANSPARENT_PNG_BASE64"]
