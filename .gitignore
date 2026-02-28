@@ -65,3 +65,6 @@ output/
 *.log
 *.diff
 *.patch
+
+.github/
+.vscode/
