@@ -89,7 +89,9 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Plan written to {result.plan.manifest_path}")
     print(f"Pages: {result.page_count}")
     if result.pdf_path:
-        print(f"PDF exported to {result.pdf_path}")
+        resolved = result.pdf_path.resolve()
+        size_kb = resolved.stat().st_size / 1024
+        print(f"PDF exported to {resolved} ({size_kb:.1f} KB)")
     return 0
 
 
