@@ -1,7 +1,12 @@
-"""Event handlers and helper methods for CSP Name Splitter GUI.
+"""Event handlers for CSP Name Splitter GUI.
 
-This module extracts the event handlers and business logic from gui.py
-into a clean, testable GuiHandlers class.
+Why: gui.py orchestrates the Flet UI but should not contain business logic.
+     GuiHandlers isolates all event callbacks and state mutations so that
+     gui.py only wires widgets to handlers.
+How: GuiHandlers inherits GuiHandlersSizeMixin (size computations and UI
+     update helpers) and GuiHandlersConfigMixin (config loading / applying).
+     This file retains only the UI helpers and event handlers that do not
+     belong to either mixin.
 """
 from __future__ import annotations
 
@@ -11,458 +16,202 @@ from datetime import datetime
 from typing import Any
 
 from name_splitter.core import (
-    CancelToken,
     ConfigError,
     ImageReadError,
     LimitExceededError,
-    load_config,
-    load_default_config,
     run_job,
 )
-from name_splitter.core.config import GridConfig
 from name_splitter.core.preview import build_preview_png
 from name_splitter.core.template import (
-    TemplateStyle,
     build_template_preview_png,
     generate_template_png,
     parse_hex_color,
 )
 from name_splitter.app.gui_state import GuiState
 from name_splitter.app.gui_types import (
-    TextField,
-    Dropdown,
-    Checkbox,
-    Text,
-    ProgressBar,
-    Image,
-    Button,
-    Page,
-    Clipboard,
     CommonFields,
     ImageFields,
     TemplateFields,
     UiElements,
+    Page,
+    Clipboard,
 )
 from name_splitter.app.gui_utils import (
     PageSizeParams,
-    GridConfigParams,
-    TemplateStyleParams,
-    FrameSizeParams,
     parse_int,
-    parse_float,
     px_to_mm,
-    mm_to_px,
-    convert_margin_to_px,
     convert_unit_value,
     compute_page_size_px as compute_page_size_px_impl,
-    compute_canvas_size_px as compute_canvas_size_px_impl,
-    compute_frame_size_mm as compute_frame_size_mm_impl,
-    build_grid_config as build_grid_config_from_params,
-    build_template_style as build_template_style_from_params,
 )
+from name_splitter.app.gui_handlers_config import GuiHandlersConfigMixin
+from name_splitter.app.gui_handlers_size import GuiHandlersSizeMixin
 
 
 @dataclass
 class GuiWidgets:
-    """References to all GUI widgets organized into logical groups."""
-    
+    """References to all GUI widgets organized into logical groups.
+
+    Why: Passing individual widget references between functions becomes
+         unwieldy as the UI grows. A single dataclass provides a typed,
+         navigable structure that both GuiHandlers and gui.py can use.
+    How: Groups widgets into CommonFields, ImageFields, TemplateFields,
+         and UiElements matching the named-tuple dataclasses in gui_types.
+    """
+
     common: CommonFields
     image: ImageFields
     template: TemplateFields
     ui: UiElements
 
 
-class GuiHandlers:
-    """Event handlers and helper methods for CSP Name Splitter GUI."""
-    
-    def __init__(self, widgets: GuiWidgets, state: GuiState, page: Page, clipboard: Clipboard):
-        """Initialize handlers with dependencies.
-        
+class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
+    """Event handlers and UI helper methods for CSP Name Splitter GUI.
+
+    Why: Centralising all Flet event callbacks in one class (with mixin
+         support for size and config concerns) prevents gui.py from growing
+         into an untestable monolith.
+    How: Inherits GuiHandlersSizeMixin for size/page computations and
+         GuiHandlersConfigMixin for config file operations. This class adds
+         low-level UI helpers and all user-interaction event handlers.
+    """
+
+    def __init__(
+        self,
+        widgets: GuiWidgets,
+        state: GuiState,
+        page: Page,
+        clipboard: Clipboard,
+    ) -> None:
+        """Initialise handlers with all required dependencies.
+
+        Why: All dependencies are injected so the class can be tested with
+             mock widgets and a headless GuiState.
+        How: Stores references as instance attributes; uses a short alias
+             self.w for widgets to keep handler bodies concise.
+
         Args:
-            widgets: GuiWidgets containing all UI element references
-            state: GuiState for state management
-            page: Flet Page object
-            clipboard: Flet clipboard service (may be None)
+            widgets: GuiWidgets holding references to all UI controls
+            state: GuiState for cancel token, tab index, unit conversion state
+            page: Flet Page for flush / snackbar / run_thread / run_task
+            clipboard: Flet Clipboard service (may be None when unavailable)
         """
-        self.w = widgets  # Short alias for widgets
+        self.w = widgets
         self.state = state
         self.page = page
         self.clipboard = clipboard
-    
-    # ============================================================== #
-    #  Helper methods                                                #
-    # ============================================================== #
-    
+
+    # ------------------------------------------------------------------ #
+    # UI helper methods                                                    #
+    # ------------------------------------------------------------------ #
+
     def add_log(self, msg: str) -> None:
-        """Add a timestamped log message."""
+        """Append a timestamped line to the log text field.
+
+        Why: All handlers share a single log area; centralising the format
+             keeps timestamps consistent across the application.
+        How: Prepends current time in HH:MM:SS format to the message and
+             appends to the existing field value.
+        """
         ts = datetime.now().strftime("%H:%M:%S")
         self.w.ui.log_field.value = f"{self.w.ui.log_field.value or ''}{ts} {msg}\n"
-    
+
     def set_status(self, msg: str) -> None:
-        """Set status text."""
+        """Set the status bar text.
+
+        Why: Status updates are frequent; a helper avoids repeating the
+             widget path in every handler.
+        How: Direct value assignment to the status_text widget.
+        """
         self.w.ui.status_text.value = msg
-    
+
     def set_progress(self, done: int, total: int) -> None:
-        """Set progress bar value."""
+        """Update the progress bar to reflect job progress.
+
+        Why: Progress bar value must be clamped to [0, 1] for Flet to
+             display it correctly; repeating the clamp logic in each
+             on_progress callback would be error-prone.
+        How: Computes done/total ratio clamped to [0.0, 1.0]; passes
+             None when total is 0 to show an indeterminate bar.
+
+        Args:
+            done: Number of steps completed
+            total: Total number of steps
+        """
         self.w.ui.progress_bar.value = max(0.0, min(1.0, done / total)) if total else None
-    
+
     def flush(self) -> None:
-        """Update the page to reflect changes."""
+        """Commit all pending widget value changes to the Flet page.
+
+        Why: Flet batches widget updates until page.update() is called;
+             without this, changes are not visible to the user.
+        How: Delegates to page.update().
+        """
         self.page.update()
-    
+
     def show_error(self, msg: str) -> None:
-        """Show error in snackbar."""
+        """Display an error message in a transient snackbar.
+
+        Why: Errors from background threads cannot use dialog boxes
+             (which require synchronous context); a snackbar is safe.
+        How: Opens a red-background SnackBar with a 5-second duration.
+             The try/except guard prevents crashes in test environments
+             where flet may not be importable.
+        """
         try:
-            import flet as ft
+            import flet as ft  # type: ignore[import]
             self.page.open(ft.SnackBar(
                 content=ft.Text(str(msg)),
                 bgcolor="red",
                 duration=5000,
             ))
-        except Exception:
-            pass
-    
-    def build_grid_config(self) -> GridConfig:
-        """Build GridConfig from UI fields (using gui_utils)."""
-        page_w_px, page_h_px = self.compute_page_px()
-        params = GridConfigParams(
-            rows=self.w.common.rows_field.value or "0",
-            cols=self.w.common.cols_field.value or "0",
-            order=self.w.common.order_field.value or "rtl_ttb",
-            margin_top=self.w.common.margin_top_field.value or "0",
-            margin_bottom=self.w.common.margin_bottom_field.value or "0",
-            margin_left=self.w.common.margin_left_field.value or "0",
-            margin_right=self.w.common.margin_right_field.value or "0",
-            margin_unit=self.w.common.margin_unit_field.value or "px",
-            gutter=self.w.common.gutter_field.value or "0",
-            gutter_unit=self.w.common.gutter_unit_field.value or "px",
-            dpi=self.w.common.dpi_field.value or "300",
-            page_size_name=self.w.common.page_size_field.value or "A4",
-            orientation=self.w.common.orientation_field.value or "portrait",
-            page_width_px=page_w_px,
-            page_height_px=page_h_px,
-            page_size_unit=self.w.common.custom_size_unit_field.value or "px",
-        )
-        return build_grid_config_from_params(params)
-    
-    def compute_page_px(self) -> tuple[int, int]:
-        """Compute page size in pixels from UI fields (using gui_utils)."""
-        params = PageSizeParams(
-            page_size_name=self.w.common.page_size_field.value or "A4",
-            orientation=self.w.common.orientation_field.value or "portrait",
-            dpi=parse_int(self.w.common.dpi_field.value or "300", "DPI"),
-            custom_width=self.w.common.custom_width_field.value,
-            custom_height=self.w.common.custom_height_field.value,
-            custom_unit=self.w.common.custom_size_unit_field.value or "px",
-        )
-        w, h = compute_page_size_px_impl(params, *self.state.page_size_cache.get())
-        self.state.page_size_cache.update(w, h)
-        return w, h
-    
-    def compute_canvas_size_px(self) -> tuple[int, int]:
-        """Compute canvas size in pixels from UI fields (using gui_utils)."""
-        pw, ph = self.compute_page_px()
-        g = self.build_grid_config()
-        return compute_canvas_size_px_impl(g, pw, ph)
-    
-    def compute_page_size_mm(self) -> tuple[float, float]:
-        """Compute page size in millimeters from UI fields (using gui_utils)."""
-        dpi = parse_int(self.w.common.dpi_field.value or "0", "DPI")
-        if dpi <= 0:
-            raise ValueError("DPI must be positive")
-        wpx, hpx = self.compute_page_px()
-        return px_to_mm(wpx, dpi), px_to_mm(hpx, dpi)
-    
-    def compute_frame_size_mm_ui(self, mode: str, w_val: str, h_val: str) -> tuple[float, float]:
-        """Compute frame size in millimeters from UI fields (using gui_utils)."""
-        pw, ph = self.compute_page_px()
-        params = FrameSizeParams(
-            mode=mode or "Use per-page size",
-            dpi=parse_int(self.w.common.dpi_field.value or "0", "DPI"),
-            orientation=self.w.common.orientation_field.value or "portrait",
-            width_value=w_val,
-            height_value=h_val,
-            page_width_px=pw,
-            page_height_px=ph,
-        )
-        return compute_frame_size_mm_impl(params)
-    
-    def build_template_style(self) -> TemplateStyle:
-        """Build TemplateStyle from UI fields (using gui_utils)."""
-        pw, ph = self.compute_page_px()
-        params = TemplateStyleParams(
-            grid_color=self.w.common.grid_color_field.value or "#FF5030",
-            grid_alpha=self.w.common.grid_alpha_field.value or "0",
-            grid_width=self.w.common.grid_width_field.value or "0",
-            finish_color=self.w.template.finish_color_field.value or "#FFFFFF",
-            finish_alpha=self.w.template.finish_alpha_field.value or "0",
-            finish_line_width=self.w.template.finish_line_width_field.value or "0",
-            finish_size_mode=self.w.template.finish_size_mode_field.value or "Use per-page size",
-            finish_width=self.w.template.finish_width_field.value or "",
-            finish_height=self.w.template.finish_height_field.value or "",
-            finish_offset_x=self.w.template.finish_offset_x_field.value or "0",
-            finish_offset_y=self.w.template.finish_offset_y_field.value or "0",
-            draw_finish=bool(self.w.template.draw_finish_field.value),
-            basic_color=self.w.template.basic_color_field.value or "#00AAFF",
-            basic_alpha=self.w.template.basic_alpha_field.value or "0",
-            basic_line_width=self.w.template.basic_line_width_field.value or "0",
-            basic_size_mode=self.w.template.basic_size_mode_field.value or "Use per-page size",
-            basic_width=self.w.template.basic_width_field.value or "",
-            basic_height=self.w.template.basic_height_field.value or "",
-            basic_offset_x=self.w.template.basic_offset_x_field.value or "0",
-            basic_offset_y=self.w.template.basic_offset_y_field.value or "0",
-            draw_basic=bool(self.w.template.draw_basic_field.value),
-            dpi=parse_int(self.w.common.dpi_field.value or "300", "DPI"),
-            orientation=self.w.common.orientation_field.value or "portrait",
-            page_width_px=pw,
-            page_height_px=ph,
-        )
-        return build_template_style_from_params(params)
-    
-    def _update_size_display(self, gc: GridConfig, pw: int, ph: int, cw: int, ch: int, wmm: float, hmm: float) -> None:
-        """Update size information display text."""
-        self.w.common.size_info_text.value = (
-            f"Page: {pw}×{ph} px ({wmm:.1f}×{hmm:.1f} mm)  |  "
-            f"Canvas: {cw}×{ch} px  |  Grid: {gc.rows}×{gc.cols}"
-        )
-        self.w.common.size_info_text.color = None
-    
-    def _update_custom_fields(self, pw: int, ph: int, wmm: float, hmm: float) -> None:
-        """Update custom page size fields based on current settings."""
-        is_custom = self.w.common.page_size_field.value == "Custom"
-        self.w.common.custom_width_field.disabled = not is_custom
-        self.w.common.custom_height_field.disabled = not is_custom
-        
-        page_size_unit = self.w.common.custom_size_unit_field.value or "px"
-        if is_custom and (not self.w.common.custom_width_field.value or not self.w.common.custom_height_field.value):
-            if page_size_unit == "mm":
-                self.w.common.custom_width_field.value = f"{wmm:.2f}"
-                self.w.common.custom_height_field.value = f"{hmm:.2f}"
-            else:
-                self.w.common.custom_width_field.value = str(pw)
-                self.w.common.custom_height_field.value = str(ph)
-        if not is_custom:
-            # Display preset size in current unit
-            if page_size_unit == "mm":
-                self.w.common.custom_width_field.value = f"{wmm:.2f}"
-                self.w.common.custom_height_field.value = f"{hmm:.2f}"
-            else:
-                self.w.common.custom_width_field.value = str(pw)
-                self.w.common.custom_height_field.value = str(ph)
-    
-    def _update_finish_frame_fields(self, pw: int, ph: int, wmm: float, hmm: float) -> None:
-        """Update finish frame fields with auto-fill values."""
-        fm = self.w.template.finish_size_mode_field.value or "Use per-page size"
-        if fm in {"Use per-page size", "A4", "A5", "B4", "B5"}:
-            fw, fh = self.compute_frame_size_mm_ui(fm, "", "")
-            self.w.template.finish_width_field.value = f"{fw:.2f}"
-            self.w.template.finish_height_field.value = f"{fh:.2f}"
-        if fm == "Custom mm" and (not self.w.template.finish_width_field.value or not self.w.template.finish_height_field.value):
-            self.w.template.finish_width_field.value = f"{wmm:.2f}"
-            self.w.template.finish_height_field.value = f"{hmm:.2f}"
-        if fm == "Custom px" and (not self.w.template.finish_width_field.value or not self.w.template.finish_height_field.value):
-            self.w.template.finish_width_field.value = str(pw)
-            self.w.template.finish_height_field.value = str(ph)
-        self.w.template.finish_width_field.disabled = not fm.startswith("Custom")
-        self.w.template.finish_height_field.disabled = not fm.startswith("Custom")
-    
-    def _update_basic_frame_fields(self, pw: int, ph: int, wmm: float, hmm: float) -> None:
-        """Update basic frame fields with auto-fill values."""
-        bm = self.w.template.basic_size_mode_field.value or "Use per-page size"
-        if bm in {"Use per-page size", "A4", "A5", "B4", "B5"}:
-            bw, bh = self.compute_frame_size_mm_ui(bm, "", "")
-            self.w.template.basic_width_field.value = f"{bw:.2f}"
-            self.w.template.basic_height_field.value = f"{bh:.2f}"
-        if bm == "Custom mm" and (not self.w.template.basic_width_field.value or not self.w.template.basic_height_field.value):
-            self.w.template.basic_width_field.value = f"{max(0.0, wmm - 20):.2f}"
-            self.w.template.basic_height_field.value = f"{max(0.0, hmm - 20):.2f}"
-        if bm == "Custom px" and (not self.w.template.basic_width_field.value or not self.w.template.basic_height_field.value):
-            self.w.template.basic_width_field.value = str(max(0, pw - 200))
-            self.w.template.basic_height_field.value = str(max(0, ph - 200))
-        self.w.template.basic_width_field.disabled = not bm.startswith("Custom")
-        self.w.template.basic_height_field.disabled = not bm.startswith("Custom")
-    
-    def update_size_info(self, _: Any = None) -> None:
-        """Update size information text and related UI elements."""
-        try:
-            gc = self.build_grid_config()
-            pw, ph = self.compute_page_px()
-            cw, ch = self.compute_canvas_size_px()
-            wmm, hmm = self.compute_page_size_mm()
-            
-            self._update_size_display(gc, pw, ph, cw, ch, wmm, hmm)
-            self._update_custom_fields(pw, ph, wmm, hmm)
-            self._update_finish_frame_fields(pw, ph, wmm, hmm)
-            self._update_basic_frame_fields(pw, ph, wmm, hmm)
-        except Exception as exc:  # noqa: BLE001
-            self.w.common.size_info_text.value = f"Size error: {exc}"
-            self.w.common.size_info_text.color = "red"
-        self.flush()
-    
-    def load_config_for_ui(self) -> tuple[str, Any]:
-        """Load config file or default config."""
-        if self.w.common.config_field.value:
-            return "Loaded config", load_config(self.w.common.config_field.value)
-        return "Loaded default config", load_default_config()
-    
-    def _apply_dpi_to_ui(self, cfg: Any) -> None:
-        """Apply DPI setting from config to UI."""
-        if hasattr(cfg.grid, "dpi") and cfg.grid.dpi > 0:
-            self.w.common.dpi_field.value = str(cfg.grid.dpi)
-    
-    def _apply_page_size_to_ui(self, cfg: Any) -> None:
-        """Apply page size settings from config to UI."""
-        # Page size name & orientation
-        if hasattr(cfg.grid, "page_size_name"):
-            self.w.common.page_size_field.value = cfg.grid.page_size_name
-        if hasattr(cfg.grid, "orientation"):
-            self.w.common.orientation_field.value = cfg.grid.orientation
-        
-        # Custom page size
-        if hasattr(cfg.grid, "page_width_px") and hasattr(cfg.grid, "page_height_px"):
-            w, h = cfg.grid.page_width_px, cfg.grid.page_height_px
-            if w > 0 and h > 0:
-                unit = cfg.grid.page_size_unit if hasattr(cfg.grid, "page_size_unit") else "px"
-                self.w.common.custom_size_unit_field.value = unit
-                if unit == "mm":
-                    dpi = cfg.grid.dpi
-                    self.w.common.custom_width_field.value = f"{w * 25.4 / dpi:.1f}"
-                    self.w.common.custom_height_field.value = f"{h * 25.4 / dpi:.1f}"
-                else:
-                    self.w.common.custom_width_field.value = str(w)
-                    self.w.common.custom_height_field.value = str(h)
-                if self.w.common.page_size_field.value != "Custom":
-                    self.w.common.page_size_field.value = "Custom"
-    
-    def _apply_grid_settings_to_ui(self, cfg: Any) -> None:
-        """Apply grid settings from config to UI."""
-        self.w.common.rows_field.value = str(cfg.grid.rows)
-        self.w.common.cols_field.value = str(cfg.grid.cols)
-        self.w.common.order_field.value = cfg.grid.order
-    
-    def _apply_gutter_to_ui(self, cfg: Any) -> None:
-        """Apply gutter settings from config to UI."""
-        if hasattr(cfg.grid, "gutter_unit"):
-            self.w.common.gutter_unit_field.value = cfg.grid.gutter_unit
-        
-        # Convert gutter from px to UI unit
-        dpi = cfg.grid.dpi
-        gutter_unit = self.w.common.gutter_unit_field.value or "px"
-        if gutter_unit == "mm":
-            self.w.common.gutter_field.value = f"{cfg.grid.gutter_px * 25.4 / dpi:.2f}"
-        else:
-            self.w.common.gutter_field.value = str(cfg.grid.gutter_px)
-    
-    def _apply_margins_to_ui(self, cfg: Any) -> None:
-        """Apply margin settings from config to UI."""
-        if hasattr(cfg.grid, "margin_unit"):
-            self.w.common.margin_unit_field.value = cfg.grid.margin_unit
-        
-        # Convert margins from px to UI unit
-        dpi = cfg.grid.dpi
-        unit = self.w.common.margin_unit_field.value or "px"
-        
-        if cfg.grid.margin_top_px or cfg.grid.margin_bottom_px or cfg.grid.margin_left_px or cfg.grid.margin_right_px:
-            # Individual margins
-            if unit == "mm":
-                self.w.common.margin_top_field.value = f"{cfg.grid.margin_top_px * 25.4 / dpi:.2f}"
-                self.w.common.margin_bottom_field.value = f"{cfg.grid.margin_bottom_px * 25.4 / dpi:.2f}"
-                self.w.common.margin_left_field.value = f"{cfg.grid.margin_left_px * 25.4 / dpi:.2f}"
-                self.w.common.margin_right_field.value = f"{cfg.grid.margin_right_px * 25.4 / dpi:.2f}"
-            else:
-                self.w.common.margin_top_field.value = str(cfg.grid.margin_top_px)
-                self.w.common.margin_bottom_field.value = str(cfg.grid.margin_bottom_px)
-                self.w.common.margin_left_field.value = str(cfg.grid.margin_left_px)
-                self.w.common.margin_right_field.value = str(cfg.grid.margin_right_px)
-        else:
-            # Legacy uniform margin
-            if unit == "mm":
-                val_mm = f"{cfg.grid.margin_px * 25.4 / dpi:.2f}"
-                self.w.common.margin_top_field.value = val_mm
-                self.w.common.margin_bottom_field.value = val_mm
-                self.w.common.margin_left_field.value = val_mm
-                self.w.common.margin_right_field.value = val_mm
-            else:
-                val_px = str(cfg.grid.margin_px)
-                self.w.common.margin_top_field.value = val_px
-                self.w.common.margin_bottom_field.value = val_px
-                self.w.common.margin_left_field.value = val_px
-                self.w.common.margin_right_field.value = val_px
-    
-    def apply_config_to_ui(self, cfg: Any) -> None:
-        """Apply loaded config to UI fields."""
-        self.state.disable_auto_preview()  # Disable auto-update during config application
-        try:
-            self._apply_dpi_to_ui(cfg)
-            self._apply_page_size_to_ui(cfg)
-            self._apply_grid_settings_to_ui(cfg)
-            self._apply_gutter_to_ui(cfg)
-            self._apply_margins_to_ui(cfg)
-            
-            # Update current units
-            self.state.unit_state.margin_unit = self.w.common.margin_unit_field.value or "px"
-            self.state.unit_state.page_size_unit = self.w.common.custom_size_unit_field.value or "px"
-            self.state.unit_state.gutter_unit = self.w.common.gutter_unit_field.value or "px"
-            
-            self.update_size_info()
-            self.add_log("Config applied to UI")
-            self.flush()
-        finally:
-            self.state.enable_auto_preview()
-    
-    def auto_preview_if_enabled(self, _: Any = None) -> None:
-        """Auto-update preview if enabled."""
-        if not self.state.auto_preview_enabled:
-            return
-        # Skip if Image Split tab and input_field is empty
-        if self.state.is_image_split_tab() and not (self.w.image.input_field.value or "").strip():
-            return
-        try:
-            self.on_preview(None)
         except Exception:  # noqa: BLE001
             pass
-    
-    # ============================================================== #
-    #  Event handlers                                                #
-    # ============================================================== #
-    
-    def on_config_change(self, _: Any) -> None:
-        """Handle config file change."""
-        if not self.w.common.config_field.value:
-            return
-        try:
-            msg, cfg = self.load_config_for_ui()
-            self.apply_config_to_ui(cfg)
-            self.set_status(msg)
-        except Exception as exc:  # noqa: BLE001
-            self.add_log(f"Config load error: {exc}")
-            self.set_status("Config error")
-        self.flush()
-    
+
+    # ------------------------------------------------------------------ #
+    # Event handlers                                                       #
+    # ------------------------------------------------------------------ #
+
     def on_preview(self, _: Any) -> None:
-        """Handle preview button click."""
+        """Render a preview image for the Image Split or Template tab.
+
+        Why: Users need immediate visual feedback when adjusting grid and
+             margin settings before committing to a full job run.
+        How: Detects the active tab; for Template tab generates a synthetic
+             template PNG; for Image Split tab loads the input image and
+             draws grid lines via build_preview_png. Result is base64-encoded
+             and set as the preview_image src.
+        """
         try:
             grid_cfg = self.build_grid_config()
             if self.state.is_template_tab():
-                # Template preview
                 w, h = self.compute_canvas_size_px()
                 dpi = parse_int(self.w.common.dpi_field.value or "0", "DPI")
-                png = build_template_preview_png(w, h, grid_cfg, self.build_template_style(), dpi)
-                self.w.ui.preview_image.src = f"data:image/png;base64,{base64.b64encode(png).decode('ascii')}"
+                png = build_template_preview_png(
+                    w, h, grid_cfg, self.build_template_style(), dpi
+                )
+                self.w.ui.preview_image.src = (
+                    f"data:image/png;base64,{base64.b64encode(png).decode('ascii')}"
+                )
                 self.set_status("Template preview")
             else:
-                # Image preview
                 path = (self.w.image.input_field.value or "").strip()
                 if not path:
                     raise ValueError("Input image is required for preview")
                 msg, cfg = self.load_config_for_ui()
                 cfg = replace(cfg, grid=grid_cfg)
-                # Grid lines settings
                 grid_alpha = parse_int(self.w.common.grid_alpha_field.value or "170", "Grid alpha")
-                grid_line_color = parse_hex_color(self.w.common.grid_color_field.value or "#FF5030", grid_alpha)
-                grid_line_width = max(1, parse_int(self.w.common.grid_width_field.value or "1", "Grid width"))
-                png = build_preview_png(path, cfg.grid, line_color=grid_line_color, line_width=grid_line_width)
-                self.w.ui.preview_image.src = f"data:image/png;base64,{base64.b64encode(png).decode('ascii')}"
+                grid_line_color = parse_hex_color(
+                    self.w.common.grid_color_field.value or "#FF5030", grid_alpha
+                )
+                grid_line_width = max(
+                    1, parse_int(self.w.common.grid_width_field.value or "1", "Grid width")
+                )
+                png = build_preview_png(
+                    path, cfg.grid, line_color=grid_line_color, line_width=grid_line_width
+                )
+                self.w.ui.preview_image.src = (
+                    f"data:image/png;base64,{base64.b64encode(png).decode('ascii')}"
+                )
                 self.set_status(msg)
             self.flush()
         except (ConfigError, ImageReadError, ValueError, RuntimeError) as exc:
@@ -470,9 +219,16 @@ class GuiHandlers:
             self.set_status("Error")
             self.show_error(str(exc))
             self.flush()
-    
+
     def _run_job(self) -> None:
-        """Run image split job (background thread)."""
+        """Execute the image-split job in a background thread.
+
+        Why: Image splitting can take seconds to minutes; running it on the
+             UI thread would freeze the application.
+        How: Reads UI fields, builds a job config, and calls run_job with
+             an on_progress callback that updates the progress bar and log.
+             Always re-enables Run / disables Cancel in the finally block.
+        """
         try:
             path = (self.w.image.input_field.value or "").strip()
             if not path:
@@ -491,7 +247,13 @@ class GuiHandlers:
                 self.add_log(f"[{ev.phase}] {ev.done}/{ev.total} {ev.message}".strip())
                 self.flush()
 
-            result = run_job(path, cfg, out_dir=out, test_page=tp_val, on_progress=on_progress, cancel_token=self.state.cancel_token)
+            result = run_job(
+                path, cfg,
+                out_dir=out,
+                test_page=tp_val,
+                on_progress=on_progress,
+                cancel_token=self.state.cancel_token,
+            )
             self.add_log(f"Plan written to {result.plan.manifest_path}")
             self.add_log(f"Pages: {result.page_count}")
             self.set_status("Done")
@@ -507,9 +269,15 @@ class GuiHandlers:
             self.w.ui.run_btn.disabled = False
             self.w.ui.cancel_btn.disabled = True
             self.flush()
-    
+
     def on_run(self, _: Any) -> None:
-        """Handle run button click."""
+        """Handle Run button click — start image-split job in a thread.
+
+        Why: The Run button must disable itself and enable Cancel
+             atomically before handing off to the background thread.
+        How: Resets cancel token, resets progress bar state, toggles
+             button states, then calls page.run_thread with _run_job.
+        """
         self.state.reset_cancel_token()
         self.w.ui.progress_bar.value = 0
         self.w.ui.progress_bar.color = None
@@ -518,15 +286,27 @@ class GuiHandlers:
         self.add_log("Starting job...")
         self.flush()
         self.page.run_thread(self._run_job)
-    
+
     def on_cancel(self, _: Any) -> None:
-        """Handle cancel button click."""
+        """Handle Cancel button click — request job cancellation.
+
+        Why: The background job checks state.cancel_token periodically;
+             setting it here propagates the cancel signal asynchronously.
+        How: Delegates to state.request_cancel() and updates status text.
+        """
         self.state.request_cancel()
         self.set_status("Cancel requested")
         self.flush()
-    
+
     def _run_template(self) -> None:
-        """Generate template PNG (background thread)."""
+        """Generate a template PNG in a background thread.
+
+        Why: Template generation can be slow for large page sizes; running
+             it off-thread keeps the UI responsive.
+        How: Reads the output path from the template_out field, appends
+             .png if missing, then calls generate_template_png and logs
+             the result path.
+        """
         try:
             w, h = self.compute_canvas_size_px()
             dpi = parse_int(self.w.common.dpi_field.value or "0", "DPI")
@@ -535,7 +315,9 @@ class GuiHandlers:
                 raise ValueError("Template output path is required")
             if not out.lower().endswith(".png"):
                 out = f"{out}.png"
-            rpath = generate_template_png(out, w, h, self.build_grid_config(), self.build_template_style(), dpi)
+            rpath = generate_template_png(
+                out, w, h, self.build_grid_config(), self.build_template_style(), dpi
+            )
             self.add_log(f"Template written: {rpath}")
             self.set_status("Template written")
             self.flush()
@@ -544,16 +326,26 @@ class GuiHandlers:
             self.set_status("Error")
             self.show_error(str(exc))
             self.flush()
-    
+
     def on_generate_template(self, _: Any) -> None:
-        """Handle generate template button click."""
+        """Handle Generate Template button click.
+
+        Why: Template generation must run off-thread to avoid UI freezes.
+        How: Shows a status message then delegates to page.run_thread.
+        """
         self.add_log("Generating template...")
         self.set_status("Generating template")
         self.flush()
         self.page.run_thread(self._run_template)
-    
+
     async def _copy_log(self) -> None:
-        """Copy log to clipboard (async)."""
+        """Copy the log text to the system clipboard (async).
+
+        Why: Clipboard access is asynchronous in Flet; a coroutine avoids
+             blocking the UI thread.
+        How: Reads log_field.value and calls clipboard.set(); guards against
+             empty log and unavailable clipboard service.
+        """
         text = (self.w.ui.log_field.value or "").strip()
         if not text:
             self.add_log("Log is empty")
@@ -570,59 +362,79 @@ class GuiHandlers:
         except Exception as exc:  # noqa: BLE001
             self.add_log(f"Error: {exc}")
         self.flush()
-    
+
     def on_copy_log(self, _: Any) -> None:
-        """Handle copy log button click."""
+        """Handle Copy Log button click.
+
+        Why: page.run_task is the safe way to schedule a coroutine from a
+             synchronous event handler in Flet.
+        How: Schedules _copy_log as an async task on the Flet event loop.
+        """
         self.page.run_task(self._copy_log)
-    
+
     def on_tab_change(self, e: Any) -> None:
-        """Handle tab change."""
+        """Handle tab selection change.
+
+        Why: The active tab determines which preview to show when
+             auto_preview_if_enabled is triggered.
+        How: Updates state.tab index then fires auto_preview_if_enabled.
+        """
         self.state.set_tab(int(e.data))
         self.flush()
-        # Auto-update preview on tab change
         self.auto_preview_if_enabled(e)
-    
+
     def on_margin_unit_change(self, e: Any) -> None:
-        """Handle margin unit change (convert values)."""
+        """Handle margin unit dropdown change — convert existing values.
+
+        Why: When the user switches between px and mm, the displayed margin
+             values must be recalculated to represent the same physical size.
+        How: Reads old and new units from state and UI, calls convert_unit_value
+             for each of the four margin fields, updates state.unit_state,
+             then refreshes size info and auto-preview.
+        """
         old_unit = self.state.unit_state.margin_unit
         new_unit = self.w.common.margin_unit_field.value or "px"
-        
-        # Skip if same unit
+
         if old_unit == new_unit:
             return
-        
+
         dpi = parse_int(self.w.common.dpi_field.value or "300", "DPI")
-        
-        # Convert margin values (using gui_utils)
-        for fld in [self.w.common.margin_top_field, self.w.common.margin_bottom_field, self.w.common.margin_left_field, self.w.common.margin_right_field]:
+        for fld in [
+            self.w.common.margin_top_field,
+            self.w.common.margin_bottom_field,
+            self.w.common.margin_left_field,
+            self.w.common.margin_right_field,
+        ]:
             if fld.value:
                 fld.value = convert_unit_value(fld.value, old_unit, new_unit, dpi)
-        
-        # Update current unit
+
         self.state.unit_state.margin_unit = new_unit
         self.update_size_info(e)
         self.auto_preview_if_enabled(e)
-    
+
     def on_custom_size_unit_change(self, e: Any) -> None:
-        """Handle page size unit change (convert values)."""
+        """Handle page size unit dropdown change — convert custom width/height.
+
+        Why: When the unit switches between px and mm, the custom page size
+             fields must show equivalent values in the new unit.
+        How: For preset sizes, computes exact px values from PageSizeParams
+             and converts to the new unit. For Custom, converts the existing
+             field values directly using convert_unit_value.
+        """
         old_unit = self.state.unit_state.page_size_unit
         new_unit = self.w.common.custom_size_unit_field.value or "px"
-        
-        # Skip if same unit
+
         if old_unit == new_unit:
             return
-        
+
         dpi = parse_int(self.w.common.dpi_field.value or "300", "DPI")
         size_choice = self.w.common.page_size_field.value or "A4"
-        
-        # Get current page size in px
+
         if size_choice == "Custom":
-            # Convert existing values for Custom (using gui_utils)
             for fld in [self.w.common.custom_width_field, self.w.common.custom_height_field]:
                 if fld.value:
                     fld.value = convert_unit_value(fld.value, old_unit, new_unit, dpi)
         else:
-            # For preset sizes (A4, B5, etc.), calculate px values and display
             params = PageSizeParams(
                 page_size_name=size_choice,
                 orientation=self.w.common.orientation_field.value or "portrait",
@@ -638,28 +450,31 @@ class GuiHandlers:
             else:
                 self.w.common.custom_width_field.value = str(w_px)
                 self.w.common.custom_height_field.value = str(h_px)
-        
-        # Update current unit
+
         self.state.unit_state.page_size_unit = new_unit
         self.update_size_info(e)
         self.auto_preview_if_enabled(e)
-    
+
     def on_gutter_unit_change(self, e: Any) -> None:
-        """Handle gutter unit change (convert values)."""
+        """Handle gutter unit dropdown change — convert existing gutter value.
+
+        Why: Switching the gutter unit recalculates the field so the gutter
+             represents the same physical gap in the new unit.
+        How: Reads old and new units from state and UI, applies
+             convert_unit_value if the field is non-empty, then refreshes.
+        """
         old_unit = self.state.unit_state.gutter_unit
         new_unit = self.w.common.gutter_unit_field.value or "px"
-        
-        # Skip if same unit
+
         if old_unit == new_unit:
             return
-        
+
         dpi = parse_int(self.w.common.dpi_field.value or "300", "DPI")
-        
-        # Convert gutter value (using gui_utils)
         if self.w.common.gutter_field.value:
-            self.w.common.gutter_field.value = convert_unit_value(self.w.common.gutter_field.value, old_unit, new_unit, dpi)
-        
-        # Update current unit
+            self.w.common.gutter_field.value = convert_unit_value(
+                self.w.common.gutter_field.value, old_unit, new_unit, dpi
+            )
+
         self.state.unit_state.gutter_unit = new_unit
         self.update_size_info(e)
         self.auto_preview_if_enabled(e)
