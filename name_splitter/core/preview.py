@@ -70,7 +70,7 @@ def load_and_resize_image(
     if max(width, height) > max_dim:
         scale = max_dim / max(width, height)
         image = image.resize(
-            (int(width * scale), int(height * scale)), Image.LANCZOS
+            (int(width * scale), int(height * scale)), Image.Resampling.LANCZOS
         )
     return image, scale
 
