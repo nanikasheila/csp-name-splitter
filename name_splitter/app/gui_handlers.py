@@ -11,6 +11,9 @@ How: GuiHandlers inherits GuiHandlersSizeMixin (size computations and UI
 from __future__ import annotations
 
 import base64
+import os
+import platform
+import subprocess
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
@@ -286,7 +289,8 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
 
             def on_progress(ev: Any) -> None:
                 self.set_progress(ev.done, ev.total)
-                self.set_status(f"{ev.phase} {ev.done}/{ev.total}")
+                pct = int(ev.done / ev.total * 100) if ev.total else 0
+                self.set_status(f"{ev.phase} {ev.done}/{ev.total} ({pct}%)")
                 self.add_log(f"[{ev.phase}] {ev.done}/{ev.total} {ev.message}".strip())
                 self.flush()
 
@@ -424,6 +428,55 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
         """
         self.w.ui.log_field.value = ""
         self.set_status("Idle")
+        self.flush()
+
+    def on_reset_defaults(self, _: Any) -> None:
+        """Reset all settings to built-in default values.
+
+        Why: Users experimenting with settings need a quick way to revert
+             to a known-good state without manually clearing each field.
+        How: Loads the built-in default config via load_default_config,
+             clears the config file path, and applies defaults to all UI
+             fields through apply_config_to_ui.
+        """
+        try:
+            cfg = load_default_config()
+            self.w.common.config_field.value = ""
+            self.apply_config_to_ui(cfg)
+            self.add_log("Settings reset to defaults")
+            self.set_status("Reset to defaults")
+        except Exception as exc:  # noqa: BLE001
+            self.add_log(f"Reset error: {exc}")
+        self.flush()
+
+    def on_open_output_folder(self, _: Any) -> None:
+        """Open the output directory in the system file manager.
+
+        Why: After a job completes users want to inspect the output files;
+             navigating manually to the directory is tedious.
+        How: Reads the output dir field value and opens it with the
+             platform-specific file manager command. Falls back gracefully
+             on missing or invalid paths.
+        """
+        out_dir = (self.w.image.out_dir_field.value or "").strip()
+        if not out_dir:
+            self.add_log("No output directory specified")
+            self.flush()
+            return
+        if not os.path.isdir(out_dir):
+            self.add_log(f"Directory not found: {out_dir}")
+            self.flush()
+            return
+        try:
+            if platform.system() == "Windows":
+                os.startfile(out_dir)  # noqa: S606
+            elif platform.system() == "Darwin":
+                subprocess.Popen(["open", out_dir])  # noqa: S603, S607
+            else:
+                subprocess.Popen(["xdg-open", out_dir])  # noqa: S603, S607
+            self.add_log(f"Opened folder: {out_dir}")
+        except Exception as exc:  # noqa: BLE001
+            self.add_log(f"Failed to open folder: {exc}")
         self.flush()
 
     def on_tab_change(self, e: Any) -> None:

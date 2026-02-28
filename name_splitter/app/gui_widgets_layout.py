@@ -39,6 +39,7 @@ class WidgetLayoutMixin:
         self,
         fields: dict,
         pick_config: Callable,
+        reset_config: Callable | None = None,
     ) -> object:
         """Build the common settings panel (config, page size, grid, margins).
 
@@ -51,11 +52,28 @@ class WidgetLayoutMixin:
         Args:
             fields: Dict of all common field widgets keyed by field name
             pick_config: Async FilePicker callback for config file selection
+            reset_config: Optional callback to reset all settings to defaults
 
         Returns:
             ft.Container with the assembled common settings layout
         """
         ft = self.ft
+
+        config_buttons = [
+            ft.IconButton(
+                icon=ft.Icons.FOLDER_OPEN,
+                tooltip="Select config file",
+                on_click=pick_config,
+            ),
+        ]
+        if reset_config is not None:
+            config_buttons.append(
+                ft.IconButton(
+                    icon=ft.Icons.RESTART_ALT,
+                    tooltip="Reset to defaults",
+                    on_click=reset_config,
+                ),
+            )
 
         return ft.Container(
             content=ft.Column([
@@ -66,11 +84,7 @@ class WidgetLayoutMixin:
                 ], spacing=4),
                 ft.Row([
                     fields["config_field"],
-                    ft.IconButton(
-                        icon=ft.Icons.FOLDER_OPEN,
-                        tooltip="Select config file",
-                        on_click=pick_config,
-                    ),
+                    *config_buttons,
                 ]),
                 ft.Divider(height=2),
                 # Page size & DPI
@@ -139,11 +153,15 @@ class WidgetLayoutMixin:
                 ], spacing=4),
                 ft.Row([
                     fields["margin_unit_field"],
-                    fields["margin_top_field"],
-                    fields["margin_bottom_field"],
-                    fields["margin_left_field"],
-                    fields["margin_right_field"]
-                ], wrap=True),
+                    ft.Column([
+                        ft.Row([fields["margin_top_field"]], alignment=ft.MainAxisAlignment.CENTER),
+                        ft.Row([
+                            fields["margin_left_field"],
+                            fields["margin_right_field"],
+                        ], alignment=ft.MainAxisAlignment.CENTER),
+                        ft.Row([fields["margin_bottom_field"]], alignment=ft.MainAxisAlignment.CENTER),
+                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2),
+                ]),
             ], spacing=4, scroll=ft.ScrollMode.AUTO),
             padding=ft.Padding(8, 4, 8, 4),
         )
@@ -155,6 +173,7 @@ class WidgetLayoutMixin:
         cancel_btn: object,
         pick_input: Callable,
         pick_out_dir: Callable,
+        open_output_folder: Callable | None = None,
     ) -> object:
         """Build the Image Split tab layout.
 
@@ -169,11 +188,28 @@ class WidgetLayoutMixin:
             cancel_btn: OutlinedButton widget for job cancellation
             pick_input: Async FilePicker callback for input image selection
             pick_out_dir: Async FilePicker callback for output dir selection
+            open_output_folder: Optional callback to open output dir in file manager
 
         Returns:
             ft.Container with the Image Split tab layout
         """
         ft = self.ft
+
+        out_dir_buttons = [
+            ft.IconButton(
+                icon=ft.Icons.FOLDER,
+                tooltip="Select output dir",
+                on_click=pick_out_dir,
+            ),
+        ]
+        if open_output_folder is not None:
+            out_dir_buttons.append(
+                ft.IconButton(
+                    icon=ft.Icons.OPEN_IN_NEW,
+                    tooltip="Open output folder",
+                    on_click=open_output_folder,
+                ),
+            )
 
         return ft.Container(
             content=ft.Column([
@@ -187,11 +223,7 @@ class WidgetLayoutMixin:
                 ]),
                 ft.Row([
                     fields["out_dir_field"],
-                    ft.IconButton(
-                        icon=ft.Icons.FOLDER,
-                        tooltip="Select output dir",
-                        on_click=pick_out_dir,
-                    ),
+                    *out_dir_buttons,
                     fields["test_page_field"],
                 ]),
                 ft.Row([run_btn, cancel_btn]),
