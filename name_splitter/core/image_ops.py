@@ -86,7 +86,7 @@ class ImageData:
             _save_ppm(self, path)
             return
         try:
-            from PIL import Image  # type: ignore
+            from PIL import Image
         except ImportError as exc:
             raise RuntimeError("Pillow is required to save PNG files") from exc
         image = Image.new("RGBA", (self.width, self.height))

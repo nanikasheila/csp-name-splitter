@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from .config import MergeConfig
+from .config import MergeConfig, MergeRule
 from .image_ops import ImageData, composite_layers
 from .image_read import LayerNode, LayerPixels
 
@@ -89,8 +89,14 @@ def _iter_layer_refs(layers: tuple[LayerNode, ...], include_hidden: bool) -> lis
     return refs
 
 
-def _match_rule(name: str, rules) -> object | None:
-    # 名前一致のルールを探索
+def _match_rule(name: str, rules: list[MergeRule]) -> MergeRule | None:
+    """Find a matching rule by name.
+
+    Why: Each layer/group name must be tested against all configured rules
+         to determine which output layer it belongs to.
+    How: Linear scan comparing the rule's group_name or layer_name against
+         the given name. Returns the first match or None.
+    """
     for rule in rules:
         target = rule.group_name if rule.group_name is not None else rule.layer_name
         if target == name:

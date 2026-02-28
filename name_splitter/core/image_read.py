@@ -43,7 +43,7 @@ def read_image(path: str | Path) -> ImageInfo:
     if not image_path.exists():
         raise ImageReadError(f"Image not found: {image_path}")
     try:
-        from PIL import Image  # type: ignore
+        from PIL import Image
     except ImportError as exc:
         raise ImageReadError("Pillow is required to read image files") from exc
     try:
@@ -60,7 +60,7 @@ def read_image_document(path: str | Path) -> ImageDocument:
     if not image_path.exists():
         raise ImageReadError(f"Image not found: {image_path}")
     try:
-        from PIL import Image  # type: ignore
+        from PIL import Image
     except ImportError as exc:
         raise ImageReadError("Pillow is required to read image files") from exc
     try:

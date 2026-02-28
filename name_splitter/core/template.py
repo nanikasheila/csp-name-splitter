@@ -153,7 +153,7 @@ def _render_template_image(
     if width_px <= 0 or height_px <= 0:
         raise ConfigError("Template width/height must be positive")
     try:
-        from PIL import Image, ImageDraw, ImageFont  # type: ignore
+        from PIL import Image, ImageDraw, ImageFont
     except ImportError as exc:
         raise RuntimeError("Pillow is required to generate template images") from exc
 
@@ -228,7 +228,7 @@ def _render_template_image(
         font_size = max(12, min(72, int(avg_cell_size * 0.08)))
         
         try:
-            font = ImageFont.truetype("arial.ttf", font_size)
+            font: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = ImageFont.truetype("arial.ttf", font_size)
         except Exception:  # noqa: BLE001
             try:
                 font = ImageFont.load_default()

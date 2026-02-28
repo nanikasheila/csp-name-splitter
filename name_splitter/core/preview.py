@@ -24,7 +24,7 @@ def build_preview_png(
     if not image_path.exists():
         raise ImageReadError(f"Image not found: {image_path}")
     try:
-        from PIL import Image, ImageDraw, ImageFont  # type: ignore
+        from PIL import Image, ImageDraw, ImageFont
     except ImportError as exc:
         raise ImageReadError("Pillow is required to build previews") from exc
 
@@ -66,7 +66,7 @@ def build_preview_png(
         
         try:
             # デフォルトフォントを使用
-            font = ImageFont.truetype("arial.ttf", font_size)
+            font: ImageFont.FreeTypeFont | ImageFont.ImageFont | None = ImageFont.truetype("arial.ttf", font_size)
         except Exception:  # noqa: BLE001
             try:
                 font = ImageFont.load_default()

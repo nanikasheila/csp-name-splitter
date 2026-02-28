@@ -9,20 +9,10 @@ How: WidgetBuilder inherits WidgetLayoutMixin (gui_widgets_layout.py)
 """
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from name_splitter.app.gui_widgets_layout import WidgetLayoutMixin
 
-if TYPE_CHECKING:
-    from name_splitter.app.gui_types import (
-        TextField,
-        Dropdown,
-        Checkbox,
-        Text,
-        ProgressBar,
-        Image,
-        InteractiveViewer,
-    )
 
 # TRANSPARENT_PNG_BASE64 for preview image
 TRANSPARENT_PNG_BASE64 = (
@@ -41,7 +31,7 @@ class WidgetBuilder(WidgetLayoutMixin):
          dataclasses (CommonFields, ImageFields, etc.).
     """
 
-    def __init__(self, ft: Any) -> None:  # type: ignore[misc]
+    def __init__(self, ft: Any) -> None:
         """Initialize WidgetBuilder with the Flet module.
 
         Why: Flet is imported lazily inside main() to avoid a hard import
@@ -54,7 +44,7 @@ class WidgetBuilder(WidgetLayoutMixin):
         """
         self.ft = ft
     
-    def create_common_fields(self) -> dict[str, TextField | Dropdown | Text]:
+    def create_common_fields(self) -> dict[str, Any]:
         """Create common fields: config, page size, DPI, grid, margin.
         
         Returns:
@@ -174,7 +164,7 @@ class WidgetBuilder(WidgetLayoutMixin):
         
         return fields
     
-    def create_image_split_fields(self) -> dict[str, TextField]:
+    def create_image_split_fields(self) -> dict[str, Any]:
         """Create Image Split tab fields.
         
         Returns:
@@ -193,7 +183,7 @@ class WidgetBuilder(WidgetLayoutMixin):
         
         return fields
     
-    def create_template_fields(self) -> dict[str, TextField | Dropdown | Checkbox]:
+    def create_template_fields(self) -> dict[str, Any]:
         """Create Template tab fields (Finish, Basic, Grid visual).
         
         Returns:
@@ -278,7 +268,7 @@ class WidgetBuilder(WidgetLayoutMixin):
         
         return fields
     
-    def create_ui_elements(self) -> dict[str, TextField | ProgressBar | Text | Image | InteractiveViewer]:
+    def create_ui_elements(self) -> dict[str, Any]:
         """Create common UI elements: log, progress, status, preview.
         
         Returns:

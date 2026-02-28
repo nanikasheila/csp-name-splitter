@@ -158,7 +158,7 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
              where flet may not be importable.
         """
         try:
-            import flet as ft  # type: ignore[import]
+            import flet as ft
             self.page.open(ft.SnackBar(
                 content=ft.Text(str(msg)),
                 bgcolor="red",

@@ -55,7 +55,7 @@ class WidgetLayoutMixin:
         Returns:
             ft.Container with the assembled common settings layout
         """
-        ft = self.ft  # type: ignore[attr-defined]
+        ft = self.ft
 
         return ft.Container(
             content=ft.Column([
@@ -155,7 +155,7 @@ class WidgetLayoutMixin:
         Returns:
             ft.Container with the Image Split tab layout
         """
-        ft = self.ft  # type: ignore[attr-defined]
+        ft = self.ft
 
         return ft.Container(
             content=ft.Column([
@@ -204,7 +204,7 @@ class WidgetLayoutMixin:
         Returns:
             ft.Container with the Template tab layout
         """
-        ft = self.ft  # type: ignore[attr-defined]
+        ft = self.ft
 
         return ft.Container(
             content=ft.Column([
