@@ -146,17 +146,14 @@ class WidgetLayoutMixin:
                 ], spacing=4),
                 ft.Row([
                     fields["margin_unit_field"],
-                    ft.Column([
-                        ft.Row([fields["margin_top_field"]], alignment=ft.MainAxisAlignment.CENTER),
-                        ft.Row([
-                            fields["margin_left_field"],
-                            fields["margin_right_field"],
-                        ], alignment=ft.MainAxisAlignment.CENTER),
-                        ft.Row([fields["margin_bottom_field"]], alignment=ft.MainAxisAlignment.CENTER),
-                    ], horizontal_alignment=ft.CrossAxisAlignment.CENTER, spacing=2),
-                ]),
-            ], spacing=4, scroll=ft.ScrollMode.AUTO),
+                    fields["margin_top_field"],
+                    fields["margin_bottom_field"],
+                    fields["margin_left_field"],
+                    fields["margin_right_field"],
+                ], wrap=True),
+            ], spacing=8, scroll=ft.ScrollMode.AUTO),
             padding=ft.Padding(8, 4, 8, 4),
+            expand=True,
         )
 
     def build_tab_image(
