@@ -493,11 +493,27 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
 
         Why: The active tab determines which preview to show when
              auto_preview_if_enabled is triggered.
-        How: Updates state.tab index then fires auto_preview_if_enabled.
+        How: Updates state.tab index for Image Split (0) and Template (1).
+             Log tab (2) keeps the previous preview-relevant index unchanged.
+             Triggers a synchronous preview refresh so the image updates
+             immediately without waiting for a debounce timer.
         """
-        self.state.set_tab(int(e.data))
-        self.flush()
-        self.auto_preview_if_enabled(e)
+        tab_index = int(e.data)
+        # Why: Log tab (index 2) is not preview-relevant; preserve the
+        #      last Image Split / Template selection for preview logic.
+        if tab_index < 2:
+            self.state.set_tab(tab_index)
+            self.flush()
+            # Why: Tab switch is an explicit user action — debounce adds
+            #      perceived latency with no benefit. Call on_preview
+            #      directly on the UI thread so the result renders immediately.
+            if self.state.auto_preview_enabled:
+                try:
+                    self.on_preview(None)
+                except Exception:  # noqa: BLE001
+                    pass
+        else:
+            self.flush()
 
     def on_margin_unit_change(self, e: Any) -> None:
         """Handle margin unit dropdown change — convert existing values.
