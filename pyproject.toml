@@ -18,6 +18,7 @@ dependencies = [
 gui = ["flet>=0.20"]
 test = ["pytest>=7.0"]
 lint = ["mypy>=1.0"]
+dev = ["pre-commit>=4.0", "pytest>=7.0", "mypy>=1.0"]
 
 [project.scripts]
 csp-name-splitter = "name_splitter.app.cli:main"
