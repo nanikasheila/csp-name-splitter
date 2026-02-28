@@ -61,10 +61,20 @@ output/
 
 # Temporary files
 *.tmp
-*.bak
 *.log
 *.diff
 *.patch
 
-.github/
-.vscode/
+# Secrets
+.env
+.env.*
+
+# Worktrees / Board
+.worktrees/
+.copilot/
+
+# Backup files
+*.bak
+
+# mypy
+.mypy_cache/
