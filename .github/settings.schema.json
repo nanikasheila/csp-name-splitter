@@ -1,0 +1,176 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "GitHub Copilot Project Settings",
+  "description": ".github/settings.json のスキーマ定義",
+  "type": "object",
+  "required": ["github", "project"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "JSON Schema ファイルへの参照"
+    },
+    "github": {
+      "type": "object",
+      "description": "GitHub リポジトリ情報（必須）",
+      "required": ["owner", "repo", "mergeMethod"],
+      "properties": {
+        "owner": {
+          "type": "string",
+          "description": "GitHub リポジトリのオーナー",
+          "minLength": 1
+        },
+        "repo": {
+          "type": "string",
+          "description": "GitHub リポジトリ名",
+          "minLength": 1
+        },
+        "mergeMethod": {
+          "type": "string",
+          "description": "PR マージ方式",
+          "enum": ["merge", "squash", "rebase"],
+          "default": "merge"
+        }
+      },
+      "additionalProperties": false
+    },
+    "issueTracker": {
+      "type": "object",
+      "description": "Issue トラッカー設定（オプション）",
+      "required": ["provider"],
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Issue トラッカーの種類",
+          "enum": ["linear", "github", "none"],
+          "default": "none"
+        },
+        "mcpServer": {
+          "type": "string",
+          "description": "Issue トラッカーの MCP サーバー名（provider が none 以外の場合に必要）"
+        },
+        "team": {
+          "type": "string",
+          "description": "チーム名"
+        },
+        "projectId": {
+          "type": "string",
+          "description": "プロジェクト ID"
+        },
+        "prefix": {
+          "type": "string",
+          "description": "Issue プレフィックス（例: SC, PROJ）",
+          "pattern": "^[A-Z]+$"
+        }
+      },
+      "additionalProperties": false,
+      "if": {
+        "properties": { "provider": { "not": { "const": "none" } } }
+      },
+      "then": {
+        "required": ["provider", "prefix"]
+      }
+    },
+    "branch": {
+      "type": "object",
+      "description": "ブランチ命名設定",
+      "required": ["user", "format"],
+      "properties": {
+        "user": {
+          "type": "string",
+          "description": "ブランチのユーザー名プレフィックス",
+          "minLength": 1
+        },
+        "format": {
+          "type": "string",
+          "description": "ブランチ名のフォーマットテンプレート。<user>, <prefix>, <number>, <type>, <description> をプレースホルダとして使用可能",
+          "default": "<user>/<prefix>-<number>-<type>-<description>"
+        }
+      },
+      "additionalProperties": false
+    },
+    "project": {
+      "type": "object",
+      "description": "プロジェクト基本情報（必須）",
+      "required": ["name", "language"],
+      "properties": {
+        "name": {
+          "type": "string",
+          "description": "プロジェクト名",
+          "minLength": 1
+        },
+        "language": {
+          "type": "string",
+          "description": "主要プログラミング言語",
+          "enum": ["javascript", "typescript", "python", "go", "rust", "java", "csharp", "ruby", "markdown", "other"]
+        },
+        "entryPoint": {
+          "type": "string",
+          "description": "エントリーポイントファイル（例: index.js, src/main.ts）"
+        },
+        "test": {
+          "type": "object",
+          "description": "テスト設定",
+          "properties": {
+            "command": {
+              "type": "string",
+              "description": "テスト実行コマンド（例: node --test, npm test, pytest）"
+            },
+            "directory": {
+              "type": "string",
+              "description": "テストディレクトリ（例: tests/, __tests__/）"
+            },
+            "pattern": {
+              "type": "string",
+              "description": "テストファイルのパターン（例: *.test.js, test_*.py）"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    },
+    "agents": {
+      "type": "object",
+      "description": "エージェント設定。model はデフォルトモデル。各エージェント名のキーで個別にモデルを上書き可能",
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "全エージェント共通のデフォルトモデル名（例: Claude Sonnet 4.6 (copilot)）"
+        },
+        "developer": {
+          "$ref": "#/$defs/agentConfig"
+        },
+        "reviewer": {
+          "$ref": "#/$defs/agentConfig"
+        },
+        "writer": {
+          "$ref": "#/$defs/agentConfig"
+        },
+        "manager": {
+          "$ref": "#/$defs/agentConfig"
+        },
+        "architect": {
+          "$ref": "#/$defs/agentConfig"
+        },
+        "assessor": {
+          "$ref": "#/$defs/agentConfig"
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "agentConfig": {
+      "type": "object",
+      "description": "個別エージェントの設定。省略時は agents.model のデフォルト値を使用",
+      "properties": {
+        "model": {
+          "type": "string",
+          "description": "このエージェント固有のモデル名。省略時はデフォルトモデルを使用"
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
