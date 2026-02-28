@@ -66,7 +66,6 @@ def main() -> None:
         )
         page.theme = _compact_theme
         page.dark_theme = _compact_theme
-        )
 
         # ============================================================== #
         #  Build widgets using WidgetBuilder                             #
