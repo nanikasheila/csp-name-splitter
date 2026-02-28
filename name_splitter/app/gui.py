@@ -318,13 +318,15 @@ def main() -> None:
         #  Build tab content using WidgetBuilder                         #
         # ============================================================== #
         tab_image = builder.build_tab_image(
-            image_fields, run_btn, cancel_btn, pick_input, pick_out_dir
+            image_fields, run_btn, cancel_btn, pick_input, pick_out_dir,
+            open_output_folder=handlers.on_open_output_folder,
         )
         tab_template = builder.build_tab_template(
             template_fields, tmpl_btn, pick_template_out
         )
         common_settings = builder.build_common_settings_area(
-            common_fields, pick_config
+            common_fields, pick_config,
+            reset_config=handlers.on_reset_defaults,
         )
 
         # ============================================================== #
@@ -392,6 +394,18 @@ def main() -> None:
         handlers.update_size_info()
         # 初期化完了後、自動プレビューを有効化
         state.enable_auto_preview()
+
+        # Keyboard shortcuts: Ctrl+R → Run, Ctrl+. → Cancel
+        def on_keyboard(e: ft.KeyboardEvent) -> None:
+            """Handle global keyboard shortcuts."""
+            if e.ctrl and e.key == "R":
+                if not run_btn.disabled:
+                    handlers.on_run(None)
+            elif e.ctrl and e.key == ".":
+                if not cancel_btn.disabled:
+                    handlers.on_cancel(None)
+
+        page.on_keyboard_event = on_keyboard
 
     ft.app(target=_app)
 
