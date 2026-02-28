@@ -58,7 +58,7 @@ def main(argv: list[str] | None = None) -> int:
         print(f"Input image not found: {input_image}", file=sys.stderr)
         return 2
 
-    def on_progress(event) -> None:  # type: ignore[no-untyped-def]
+    def on_progress(event) -> None:
         timestamp = datetime.now().strftime("%H:%M:%S")
         message = f"[{event.phase}] {event.done}/{event.total}"
         if event.message:

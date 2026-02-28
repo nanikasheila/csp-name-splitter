@@ -39,7 +39,7 @@ from name_splitter.app.gui_types import CommonFields, ImageFields, TemplateField
 
 def main() -> None:
     try:
-        import flet as ft  # type: ignore
+        import flet as ft
     except ImportError as exc:  # pragma: no cover
         raise RuntimeError("flet is required for GUI mode") from exc
 
