@@ -166,7 +166,7 @@ def main() -> None:
                 return
             if files:
                 config_field.value = files[0].path
-                app_settings.add_recent_config(files[0].path)
+                app_settings.add_recent_config(str(files[0].path))
                 save_app_settings(app_settings)
                 handlers.on_config_change(None)  # UI反映 + 状態更新
                 handlers.flush()
@@ -185,7 +185,7 @@ def main() -> None:
                 return
             if files:
                 input_field.value = files[0].path
-                app_settings.add_recent_input(files[0].path)
+                app_settings.add_recent_input(str(files[0].path))
                 save_app_settings(app_settings)
                 handlers.auto_preview_if_enabled(None)  # 画像選択時に自動プレビュー
                 handlers.flush()
@@ -250,22 +250,22 @@ def main() -> None:
             """フィールドの値を即時バリデーション → error_text設定"""
             val = (fld.value or "").strip()
             if not val:
-                fld.error_text = None
+                fld.error_text = None  # type: ignore[attr-defined]
                 return
             if fld in _int_fields:
                 try:
                     int(val)
-                    fld.error_text = None
+                    fld.error_text = None  # type: ignore[attr-defined]
                 except ValueError:
-                    fld.error_text = "整数を入力"
+                    fld.error_text = "整数を入力"  # type: ignore[attr-defined]
             elif fld in _num_fields:
                 try:
                     float(val)
-                    fld.error_text = None
+                    fld.error_text = None  # type: ignore[attr-defined]
                 except ValueError:
-                    fld.error_text = "数値を入力"
+                    fld.error_text = "数値を入力"  # type: ignore[attr-defined]
             else:
-                fld.error_text = None
+                fld.error_text = None  # type: ignore[attr-defined]
 
         def make_preview_handler():
             """on_change用: バリデーション + サイズ情報更新のみ（軽量）"""
@@ -356,7 +356,7 @@ def main() -> None:
             save_app_settings(app_settings)
             page.update()
 
-        theme_icon.on_click = on_theme_toggle
+        theme_icon.on_click = on_theme_toggle  # type: ignore[assignment]
 
         # ============================================================== #
         #  Build tab content using WidgetBuilder                         #
@@ -364,6 +364,7 @@ def main() -> None:
         tab_config = builder.build_tab_config(
             common_fields, pick_config,
             reset_config=handlers.on_reset_defaults,
+            save_config=handlers.on_save_config,
         )
         tab_image = builder.build_tab_image(
             image_fields, run_btn, cancel_btn, pick_input, pick_out_dir,
@@ -440,7 +441,7 @@ def main() -> None:
                                     ft.Tab(label="Log", icon=ft.Icons.TERMINAL),
                                 ]),
                                 ft.TabBarView(
-                                    controls=[tab_config, tab_image, tab_template, tab_log],
+                                    controls=[tab_config, tab_image, tab_template, tab_log],  # type: ignore[list-item]
                                     expand=True,
                                 ),
                             ], expand=True),
@@ -477,13 +478,13 @@ def main() -> None:
         def on_window_resize(_: ft.ControlEvent) -> None:
             """Save window dimensions when the user resizes the window."""
             try:
-                app_settings.window_width = int(page.window.width)
-                app_settings.window_height = int(page.window.height)
+                app_settings.window_width = int(page.window.width or 0)
+                app_settings.window_height = int(page.window.height or 0)
                 save_app_settings(app_settings)
             except Exception:  # noqa: BLE001
                 pass
 
-        page.window.on_resized = on_window_resize
+        page.window.on_resized = on_window_resize  # type: ignore[attr-defined]
 
     ft.app(target=_app)
 
