@@ -5,6 +5,8 @@ from datetime import datetime
 import sys
 from pathlib import Path
 
+from dataclasses import replace
+
 from name_splitter.core import (
     ConfigError,
     ImageReadError,
@@ -13,6 +15,7 @@ from name_splitter.core import (
     load_default_config,
     run_job,
 )
+from name_splitter.core.config import OutputConfig
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -21,6 +24,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--config", dest="config_path", help="Path to config.yaml")
     parser.add_argument("--out-dir", dest="out_dir", help="Output directory")
     parser.add_argument("--page", dest="test_page", type=int, help="Render a single page (1-based)")
+    parser.add_argument("--pdf", action="store_true", help="Export pages as a single PDF file")
     parser.add_argument("--gui", action="store_true", help="Launch GUI (not implemented yet)")
     return parser
 
@@ -65,6 +69,11 @@ def main(argv: list[str] | None = None) -> int:
             message = f"{message} - {event.message}"
         print(f"{timestamp} {message}")
 
+    # Why: --pdf flag overrides output.container to "pdf"
+    # How: Replace the output config with container="pdf" when flag is set
+    if args.pdf:
+        cfg = replace(cfg, output=replace(cfg.output, container="pdf"))
+
     try:
         result = run_job(
             input_image,
@@ -79,6 +88,8 @@ def main(argv: list[str] | None = None) -> int:
 
     print(f"Plan written to {result.plan.manifest_path}")
     print(f"Pages: {result.page_count}")
+    if result.pdf_path:
+        print(f"PDF exported to {result.pdf_path}")
     return 0
 
 

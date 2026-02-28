@@ -9,6 +9,7 @@ from .errors import LimitExceededError
 from .grid import compute_cells
 from .merge import MergeResult
 from .image_read import ImageInfo, read_image_document
+from .pdf_export import export_pdf
 from .render import RenderPlan, RenderedPage, render_pages, write_plan
 
 
@@ -42,6 +43,7 @@ class JobResult:
     out_dir: Path
     page_count: int
     plan: RenderPlan
+    pdf_path: Path | None = None
 
 
 def run_job(
@@ -110,7 +112,24 @@ def run_job(
     report("render_pages", len(selected_pages), len(selected_pages), "Pages rendered")
     check_cancel()
 
-    return JobResult(out_dir=output_dir, page_count=len(selected_pages), plan=plan)
+    # Why: Users may want a single PDF containing all rendered pages
+    # How: When container is "pdf", call export_pdf after page rendering
+    pdf_path: Path | None = None
+    if cfg.output.container == "pdf":
+        report("export_pdf", 0, 1, "Generating PDF")
+        pdf_filename = Path(input_image).stem + ".pdf"
+        pdf_path = output_dir / pdf_filename
+        primary_layer = cfg.output.layer_stack[0] if cfg.output.layer_stack else "flat"
+        export_pdf(
+            rendered_pages,
+            pdf_path,
+            layer_name=primary_layer,
+            dpi=cfg.grid.dpi,
+        )
+        report("export_pdf", 1, 1, f"PDF exported: {pdf_path}")
+        check_cancel()
+
+    return JobResult(out_dir=output_dir, page_count=len(selected_pages), plan=plan, pdf_path=pdf_path)
 
 
 def _select_pages(total_pages: int, test_page: int | None) -> list[int]:

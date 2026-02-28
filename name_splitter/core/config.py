@@ -9,6 +9,7 @@ from .errors import ConfigError
 ALLOWED_GRID_ORDERS = {"rtl_ttb", "ltr_ttb"}
 ALLOWED_ON_EXCEED = {"error"}
 ALLOWED_OUTPUT_LAYOUTS = {"pages", "layers"}
+ALLOWED_CONTAINERS = {"png", "pdf"}
 
 
 @dataclass(frozen=True)
@@ -225,3 +226,5 @@ def validate_config(cfg: Config) -> None:
         raise ConfigError("output.layer_stack must not be empty")
     if cfg.output.layout not in ALLOWED_OUTPUT_LAYOUTS:
         raise ConfigError(f"output.layout must be one of {sorted(ALLOWED_OUTPUT_LAYOUTS)}")
+    if cfg.output.container not in ALLOWED_CONTAINERS:
+        raise ConfigError(f"output.container must be one of {sorted(ALLOWED_CONTAINERS)}")
