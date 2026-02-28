@@ -120,6 +120,7 @@ class WidgetBuilder(WidgetLayoutMixin):
             ],
             value="rtl_ttb",
             width=145,
+            tooltip="右→左: 日本の漫画形式\n左→右: 海外コミック形式",
         )
         fields["gutter_unit_field"] = ft.Dropdown(
             label="Gutter unit",
@@ -129,6 +130,7 @@ class WidgetBuilder(WidgetLayoutMixin):
             ],
             value="px",
             width=110,
+            tooltip="コマとコマの間の隙間（間隔）",
         )
         fields["gutter_field"] = ft.TextField(
             label="Gutter", value="0", width=90, keyboard_type=ft.KeyboardType.NUMBER
@@ -136,7 +138,10 @@ class WidgetBuilder(WidgetLayoutMixin):
         fields["grid_color_field"] = ft.TextField(
             label="Grid color", value="#FF5030", width=110
         )
-        fields["grid_alpha_field"] = ft.TextField(label="Alpha", value="170", width=90)
+        fields["grid_alpha_field"] = ft.TextField(
+            label="Alpha", value="170", width=90,
+            tooltip="不透明度（0=透明、255=不透明）",
+        )
         fields["grid_width_field"] = ft.TextField(label="Width px", value="1", width=90)
         outline = ft.Colors.OUTLINE if hasattr(ft, "Colors") else ft.colors.OUTLINE
         fields["grid_color_swatch"] = ft.Container(

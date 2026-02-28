@@ -91,9 +91,10 @@ class WidgetLayoutMixin:
                 ft.Row([
                     ft.Icon(ft.Icons.STRAIGHTEN, size=16),
                     ft.Text("Page size & DPI", weight=ft.FontWeight.BOLD, size=12),
-                    ft.Tooltip(
-                        message="DPI: 1インチあたりのドット数。印刷解像度に合わせてください",
-                        content=ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.OUTLINE),
+                    ft.Icon(
+                        ft.Icons.INFO_OUTLINE, size=14,
+                        color=ft.Colors.OUTLINE,
+                        tooltip="DPI: 1インチあたりのドット数。印刷解像度に合わせてください",
                     ),
                 ], spacing=4),
                 ft.Row([
@@ -121,34 +122,26 @@ class WidgetLayoutMixin:
                 ft.Row([
                     fields["rows_field"],
                     fields["cols_field"],
-                    ft.Tooltip(
-                        message="右→左: 日本の漫画形式\n左→右: 海外コミック形式",
-                        content=fields["order_field"],
-                    ),
+                    fields["order_field"],
                 ], wrap=True),
                 ft.Row([
-                    ft.Tooltip(
-                        message="コマとコマの間の隙間（間隔）",
-                        content=fields["gutter_unit_field"],
-                    ),
+                    fields["gutter_unit_field"],
                     fields["gutter_field"]
                 ], wrap=True),
                 ft.Row([
                     fields["grid_color_field"],
                     fields["grid_color_swatch"],
-                    ft.Tooltip(
-                        message="不透明度（0=透明、255=不透明）",
-                        content=fields["grid_alpha_field"],
-                    ),
+                    fields["grid_alpha_field"],
                     fields["grid_width_field"]
                 ], wrap=True),
                 ft.Divider(height=2),
                 ft.Row([
                     ft.Icon(ft.Icons.CROP_FREE, size=16),
                     ft.Text("Margins", weight=ft.FontWeight.BOLD, size=12),
-                    ft.Tooltip(
-                        message="ページ端から有効領域までの余白",
-                        content=ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.OUTLINE),
+                    ft.Icon(
+                        ft.Icons.INFO_OUTLINE, size=14,
+                        color=ft.Colors.OUTLINE,
+                        tooltip="ページ端から有効領域までの余白",
                     ),
                 ], spacing=4),
                 ft.Row([
