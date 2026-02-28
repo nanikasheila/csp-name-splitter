@@ -200,6 +200,10 @@ class GuiHandlersConfigMixin:
             self.state.unit_state.page_size_unit = self.w.common.custom_size_unit_field.value or "px"
             self.state.unit_state.gutter_unit = self.w.common.gutter_unit_field.value or "px"
 
+            # Apply output format if available
+            if hasattr(cfg.output, "container"):
+                self.w.image.output_format_field.value = cfg.output.container
+
             self.update_size_info()
             self.add_log("Config applied to UI")
             self.flush()

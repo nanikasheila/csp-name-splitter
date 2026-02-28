@@ -40,6 +40,7 @@ class WidgetLayoutMixin:
         fields: dict,
         pick_config: Callable,
         reset_config: Callable | None = None,
+        save_config: Callable | None = None,
     ) -> object:
         """Build the Config tab content (config file, page size, grid, margins).
 
@@ -72,6 +73,14 @@ class WidgetLayoutMixin:
                     icon=ft.Icons.RESTART_ALT,
                     tooltip="Reset to defaults",
                     on_click=reset_config,
+                ),
+            )
+        if save_config is not None:
+            config_buttons.append(
+                ft.IconButton(
+                    icon=ft.Icons.SAVE,
+                    tooltip="Save current settings to config file",
+                    on_click=save_config,
                 ),
             )
 
@@ -216,6 +225,14 @@ class WidgetLayoutMixin:
                     *out_dir_buttons,
                     fields["test_page_field"],
                 ]),
+                ft.Divider(height=2),
+                # Output format selection
+                ft.Row([
+                    ft.Icon(ft.Icons.OUTPUT, size=16),
+                    ft.Text("Output", weight=ft.FontWeight.BOLD, size=12),
+                ], spacing=4),
+                ft.Row([fields["output_format_field"]]),
+                ft.Divider(height=2),
                 ft.Row([run_btn, cancel_btn]),
             ], spacing=6, scroll=ft.ScrollMode.AUTO),
             padding=ft.Padding(8, 6, 8, 6),

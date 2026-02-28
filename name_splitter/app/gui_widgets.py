@@ -191,6 +191,16 @@ class WidgetBuilder(WidgetLayoutMixin):
         fields["test_page_field"] = ft.TextField(
             label="Test page (1-based, optional)", width=180
         )
+        fields["output_format_field"] = ft.Dropdown(
+            label="Output format",
+            options=[
+                ft.dropdown.Option(key="png", text="PNG (images)"),
+                ft.dropdown.Option(key="pdf", text="PDF (single file)"),
+            ],
+            value="png",
+            width=180,
+            tooltip="PNG: 個別画像ファイル\nPDF: 1つのPDFにまとめて出力",
+        )
         
         return fields
     

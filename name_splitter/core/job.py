@@ -126,7 +126,9 @@ def run_job(
             layer_name=primary_layer,
             dpi=cfg.grid.dpi,
         )
-        report("export_pdf", 1, 1, f"PDF exported: {pdf_path}")
+        resolved_pdf = pdf_path.resolve()
+        pdf_size = resolved_pdf.stat().st_size
+        report("export_pdf", 1, 1, f"PDF exported: {resolved_pdf} ({pdf_size:,} bytes)")
         check_cancel()
 
     return JobResult(out_dir=output_dir, page_count=len(selected_pages), plan=plan, pdf_path=pdf_path)
