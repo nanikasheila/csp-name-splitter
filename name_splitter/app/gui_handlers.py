@@ -148,6 +148,24 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
         """
         self.page.update()
 
+    def update_color_swatches(self) -> None:
+        """Sync color swatch containers with their corresponding text fields.
+
+        Why: Users need immediate visual feedback when typing hex color codes;
+             a small colored square next to the field makes correctness obvious.
+        How: Reads each color text field, validates the hex format, and sets
+             the swatch container's bgcolor. Invalid values are silently ignored.
+        """
+        swatches = [
+            (self.w.common.grid_color_field, self.w.common.grid_color_swatch),
+            (self.w.template.finish_color_field, self.w.template.finish_color_swatch),
+            (self.w.template.basic_color_field, self.w.template.basic_color_swatch),
+        ]
+        for color_field, swatch in swatches:
+            raw = (color_field.value or "").strip()
+            if raw and len(raw) in (4, 7) and raw.startswith("#"):
+                swatch.bgcolor = raw
+
     def show_error(self, msg: str) -> None:
         """Display an error message in a transient snackbar.
 
@@ -179,11 +197,14 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
 
         Why: Users need immediate visual feedback when adjusting grid and
              margin settings before committing to a full job run.
-        How: For Image Split tab, uses PreviewImageCache to skip disk I/O
+        How: Shows a loading spinner before computation, then hides it.
+             For Image Split tab, uses PreviewImageCache to skip disk I/O
              and resize when only grid settings changed. Outputs JPEG for
              faster encoding and smaller data-URI payloads. Template tab
              generates a synthetic preview via build_template_preview_png.
         """
+        self.w.ui.preview_loading_ring.visible = True
+        self.flush()
         try:
             grid_cfg = self.build_grid_config()
             if self.state.is_template_tab():
@@ -233,8 +254,10 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
                     f"data:image/jpeg;base64,{base64.b64encode(jpeg_bytes).decode('ascii')}"
                 )
                 self.set_status(msg)
+            self.w.ui.preview_loading_ring.visible = False
             self.flush()
         except (ConfigError, ImageReadError, ValueError, RuntimeError) as exc:
+            self.w.ui.preview_loading_ring.visible = False
             self.add_log(f"Error: {exc}")
             self.set_status("Error")
             self.show_error(str(exc))
@@ -391,6 +414,17 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
         How: Schedules _copy_log as an async task on the Flet event loop.
         """
         self.page.run_task(self._copy_log)
+
+    def on_clear_log(self, _: Any) -> None:
+        """Clear all log entries and reset status text.
+
+        Why: Users accumulate logs during iterative adjustments; a clear
+             button prevents scrolling through outdated entries.
+        How: Empties the log_field value and resets status to Idle.
+        """
+        self.w.ui.log_field.value = ""
+        self.set_status("Idle")
+        self.flush()
 
     def on_tab_change(self, e: Any) -> None:
         """Handle tab selection change.

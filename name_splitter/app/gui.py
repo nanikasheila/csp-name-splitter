@@ -111,6 +111,7 @@ def main() -> None:
         status_text = ui_elements["status_text"]
         preview_image = ui_elements["preview_image"]
         preview_viewer = ui_elements["preview_viewer"]
+        preview_loading_ring = ui_elements["preview_loading_ring"]
 
         clipboard = ft.Clipboard() if hasattr(ft, "Clipboard") else None
         state = GuiState()  # 状態管理クラス
@@ -311,6 +312,7 @@ def main() -> None:
         cancel_btn.on_click = handlers.on_cancel
         tmpl_btn = ft.ElevatedButton("Generate Template", on_click=handlers.on_generate_template, icon=ft.Icons.GRID_ON)
         copy_log_btn = ft.OutlinedButton("Copy log", on_click=handlers.on_copy_log, icon=ft.Icons.COPY)
+        clear_log_btn = ft.OutlinedButton("Clear", on_click=handlers.on_clear_log, icon=ft.Icons.DELETE_OUTLINE)
 
         # ============================================================== #
         #  Build tab content using WidgetBuilder                         #
@@ -332,17 +334,23 @@ def main() -> None:
 
         page.add(
             ft.Row([
-                # 左側: Preview
+                # Left: Preview with loading overlay
                 ft.Container(
-                    content=ft.Container(
-                        content=preview_viewer,
-                        border=ft.border.all(1, outline_color),
-                        padding=8,
-                    ),
+                    content=ft.Stack([
+                        ft.Container(
+                            content=preview_viewer,
+                            border=ft.border.all(1, outline_color),
+                            padding=8,
+                        ),
+                        ft.Container(
+                            content=preview_loading_ring,
+                            alignment=ft.alignment.center,
+                        ),
+                    ]),
                     expand=1,
                     padding=ft.Padding(4, 4, 2, 4),
                 ),
-                # 右側: Settings + Tabs + Log + Status
+                # Right: Settings + Tabs + Log + Status
                 ft.Container(
                     content=ft.Column([
                         # 共通設定
@@ -364,7 +372,10 @@ def main() -> None:
                         # Status & Progress
                         ft.Row([progress_bar, status_text]),
                         # Log
-                        ft.Row([ft.Text("Log", weight=ft.FontWeight.BOLD, size=12), copy_log_btn], alignment=ft.MainAxisAlignment.SPACE_BETWEEN),
+                        ft.Row(
+                            [ft.Text("Log", weight=ft.FontWeight.BOLD, size=12), clear_log_btn, copy_log_btn],
+                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
+                        ),
                         ft.Container(
                             content=log_field,
                             border=ft.border.all(1, outline_color),
