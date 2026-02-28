@@ -379,7 +379,7 @@ def main() -> None:
                         ),
                         ft.Container(
                             content=preview_loading_ring,
-                            alignment=ft.alignment.center,
+                            alignment=ft.alignment.Alignment(0, 0),
                         ),
                     ]),
                     expand=1,
