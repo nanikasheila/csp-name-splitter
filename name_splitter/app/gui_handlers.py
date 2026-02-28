@@ -21,7 +21,7 @@ from name_splitter.core import (
     LimitExceededError,
     run_job,
 )
-from name_splitter.core.preview import build_preview_png
+from name_splitter.core.preview import build_preview_png, load_and_resize_image
 from name_splitter.core.template import (
     build_template_preview_png,
     generate_template_png,
@@ -171,15 +171,18 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
     # Event handlers                                                       #
     # ------------------------------------------------------------------ #
 
+    # P5: Reduced default preview dimension — UI widget further down-scales
+    _preview_max_dim: int = 800
+
     def on_preview(self, _: Any) -> None:
         """Render a preview image for the Image Split or Template tab.
 
         Why: Users need immediate visual feedback when adjusting grid and
              margin settings before committing to a full job run.
-        How: Detects the active tab; for Template tab generates a synthetic
-             template PNG; for Image Split tab loads the input image and
-             draws grid lines via build_preview_png. Result is base64-encoded
-             and set as the preview_image src.
+        How: For Image Split tab, uses PreviewImageCache to skip disk I/O
+             and resize when only grid settings changed. Outputs JPEG for
+             faster encoding and smaller data-URI payloads. Template tab
+             generates a synthetic preview via build_template_preview_png.
         """
         try:
             grid_cfg = self.build_grid_config()
@@ -206,11 +209,28 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
                 grid_line_width = max(
                     1, parse_int(self.w.common.grid_width_field.value or "1", "Grid width")
                 )
-                png = build_preview_png(
-                    path, cfg.grid, line_color=grid_line_color, line_width=grid_line_width
+                # P1: Try image cache to skip I/O + resize
+                cache = self.state.preview_image_cache
+                cached = cache.get(path, self._preview_max_dim)
+                if cached is not None:
+                    cached_image, cached_scale = cached
+                else:
+                    cached_image, cached_scale = load_and_resize_image(
+                        path, self._preview_max_dim
+                    )
+                    cache.store(path, self._preview_max_dim, cached_image, cached_scale)
+                # P3: JPEG output from build_preview_png
+                jpeg_bytes = build_preview_png(
+                    path,
+                    cfg.grid,
+                    max_dim=self._preview_max_dim,
+                    line_color=grid_line_color,
+                    line_width=grid_line_width,
+                    cached_image=cached_image,
+                    cached_scale=cached_scale,
                 )
                 self.w.ui.preview_image.src = (
-                    f"data:image/png;base64,{base64.b64encode(png).decode('ascii')}"
+                    f"data:image/jpeg;base64,{base64.b64encode(jpeg_bytes).decode('ascii')}"
                 )
                 self.set_status(msg)
             self.flush()

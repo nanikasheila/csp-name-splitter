@@ -6,6 +6,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
 
 from name_splitter.core import CancelToken
 
@@ -35,6 +37,67 @@ class UnitState:
 
 
 @dataclass
+class PreviewImageCache:
+    """リサイズ済みプレビュー画像のキャッシュ。
+
+    Why: build_preview_png は毎回ディスクから画像を読み込み RGBA 変換と
+         リサイズを行う。グリッド設定変更だけでフルパイプラインが走るのは
+         無駄であり、プレビュー体感速度の最大ボトルネック。
+    How: ファイルパス + max_dim + ファイル更新時刻をキーとして PIL Image
+         (RGBA, リサイズ済み) を保持。キーが一致すればキャッシュを返す。
+    """
+    _path: str = ""
+    _max_dim: int = 0
+    _mtime: float = 0.0
+    _image: Any = None   # PIL.Image.Image | None
+    _scale: float = 1.0
+
+    def get(
+        self, path: str, max_dim: int
+    ) -> tuple[Any, float] | None:
+        """Retrieve cached image if path/max_dim/mtime all match.
+
+        Why: Avoids redundant disk I/O + RGBA conversion + resize when
+             only the grid overlay needs to change.
+        How: Compares stored key fields. On mtime mismatch (file was
+             edited externally) the cache is invalidated.
+
+        Returns:
+            (PIL.Image.Image copy, scale) or None on miss.
+        """
+        if path != self._path or max_dim != self._max_dim:
+            return None
+        try:
+            current_mtime = Path(path).stat().st_mtime
+        except OSError:
+            return None
+        if current_mtime != self._mtime:
+            return None
+        if self._image is None:
+            return None
+        return self._image.copy(), self._scale
+
+    def store(
+        self, path: str, max_dim: int, image: Any, scale: float
+    ) -> None:
+        """Store a freshly loaded/resized image in the cache.
+
+        Why: Called once after a cache miss so subsequent preview builds
+             skip the expensive read+resize pipeline.
+        How: Records the key fields and a copy of the PIL Image.
+        """
+        try:
+            mtime = Path(path).stat().st_mtime
+        except OSError:
+            mtime = 0.0
+        self._path = path
+        self._max_dim = max_dim
+        self._mtime = mtime
+        self._image = image.copy()
+        self._scale = scale
+
+
+@dataclass
 class GuiState:
     """GUIアプリケーションの状態を一元管理するクラス。
     
@@ -53,6 +116,7 @@ class GuiState:
     active_tab_index: int = 0
     auto_preview_enabled: bool = False
     page_size_cache: PageSizeCache = field(default_factory=PageSizeCache)
+    preview_image_cache: PreviewImageCache = field(default_factory=PreviewImageCache)
     
     def reset_cancel_token(self) -> None:
         """新しいキャンセルトークンを作成（ジョブ開始時に使用）。"""
@@ -83,4 +147,4 @@ class GuiState:
         self.auto_preview_enabled = False
 
 
-__all__ = ["GuiState", "UnitState", "PageSizeCache"]
+__all__ = ["GuiState", "UnitState", "PageSizeCache", "PreviewImageCache"]
