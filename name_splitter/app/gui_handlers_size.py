@@ -47,8 +47,11 @@ class GuiHandlersSizeMixin:
     """
 
     if TYPE_CHECKING:
+        import flet as ft
+
         w: Any        # GuiWidgets — set in GuiHandlers.__init__
         state: GuiState
+        page: ft.Page
 
         def flush(self) -> None: ...
 

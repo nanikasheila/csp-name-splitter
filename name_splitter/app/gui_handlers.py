@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import base64
 import os
-import platform
 import subprocess
+import sys
 from dataclasses import dataclass, replace
 from datetime import datetime
 from typing import Any
@@ -22,6 +22,7 @@ from name_splitter.core import (
     ConfigError,
     ImageReadError,
     LimitExceededError,
+    load_default_config,
     run_job,
 )
 from name_splitter.core.preview import build_preview_png, load_and_resize_image
@@ -477,9 +478,9 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
             self.flush()
             return
         try:
-            if platform.system() == "Windows":
+            if sys.platform == "win32":
                 os.startfile(out_dir)  # noqa: S606
-            elif platform.system() == "Darwin":
+            elif sys.platform == "darwin":
                 subprocess.Popen(["open", out_dir])  # noqa: S603, S607
             else:
                 subprocess.Popen(["xdg-open", out_dir])  # noqa: S603, S607
