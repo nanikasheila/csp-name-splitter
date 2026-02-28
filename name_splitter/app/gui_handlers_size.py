@@ -345,6 +345,7 @@ class GuiHandlersSizeMixin:
             self._update_custom_fields(pw, ph, wmm, hmm)
             self._update_finish_frame_fields(pw, ph, wmm, hmm)
             self._update_basic_frame_fields(pw, ph, wmm, hmm)
+            self.update_color_swatches()  # type: ignore[attr-defined]
         except Exception as exc:  # noqa: BLE001
             self.w.common.size_info_text.value = f"Size error: {exc}"
             self.w.common.size_info_text.color = "red"

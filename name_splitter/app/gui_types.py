@@ -138,6 +138,7 @@ class CommonFields:
     grid_color_field: TextField
     grid_alpha_field: TextField
     grid_width_field: TextField
+    grid_color_swatch: Any  # Color preview container for grid line color
     
     # Margin settings
     margin_unit_field: Dropdown
@@ -172,6 +173,7 @@ class TemplateFields:
     finish_color_field: TextField
     finish_alpha_field: TextField
     finish_line_width_field: TextField
+    finish_color_swatch: Any  # Color preview container for finish frame color
     
     # Basic frame
     draw_basic_field: Checkbox
@@ -183,6 +185,7 @@ class TemplateFields:
     basic_color_field: TextField
     basic_alpha_field: TextField
     basic_line_width_field: TextField
+    basic_color_swatch: Any  # Color preview container for basic frame color
 
 
 @dataclass
@@ -194,5 +197,6 @@ class UiElements:
     status_text: Text
     preview_image: Image
     preview_viewer: InteractiveViewer
+    preview_loading_ring: Any  # ProgressRing shown during preview generation
     run_btn: Button
     cancel_btn: Button
