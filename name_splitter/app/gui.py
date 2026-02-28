@@ -57,27 +57,15 @@ def main() -> None:
         )
 
         # Why: Default Material 3 widgets are large for a data-heavy tool.
-        # How: COMPACT density reduces control height; smaller body/label
-        #      fonts give more room for settings on screen.
-        page.theme = ft.Theme(
+        # How: COMPACT density reduces control height. We avoid overriding
+        #      TextTheme because partial TextStyle overrides (size only)
+        #      can lose the theme-inherited foreground color, causing white
+        #      text on light backgrounds or invisible borders on dark ones.
+        _compact_theme = ft.Theme(
             visual_density=ft.VisualDensity.COMPACT,
-            text_theme=ft.TextTheme(
-                body_medium=ft.TextStyle(size=13),
-                body_small=ft.TextStyle(size=11),
-                label_large=ft.TextStyle(size=13),
-                label_medium=ft.TextStyle(size=11),
-                label_small=ft.TextStyle(size=10),
-            ),
         )
-        page.dark_theme = ft.Theme(
-            visual_density=ft.VisualDensity.COMPACT,
-            text_theme=ft.TextTheme(
-                body_medium=ft.TextStyle(size=13),
-                body_small=ft.TextStyle(size=11),
-                label_large=ft.TextStyle(size=13),
-                label_medium=ft.TextStyle(size=11),
-                label_small=ft.TextStyle(size=10),
-            ),
+        page.theme = _compact_theme
+        page.dark_theme = _compact_theme
         )
 
         # ============================================================== #
