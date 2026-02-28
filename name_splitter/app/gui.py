@@ -367,54 +367,73 @@ def main() -> None:
         # ============================================================== #
         outline_color = ft.Colors.OUTLINE if hasattr(ft, "Colors") else ft.colors.OUTLINE
 
+        # Log tab content (3rd tab)
+        tab_log = ft.Container(
+            content=ft.Column([
+                ft.Row(
+                    [clear_log_btn, copy_log_btn],
+                    alignment=ft.MainAxisAlignment.END,
+                    spacing=4,
+                ),
+                ft.Container(
+                    content=log_field,
+                    border=ft.border.all(1, outline_color),
+                    padding=8,
+                    expand=True,
+                ),
+            ], expand=True, spacing=4),
+            padding=ft.Padding(8, 6, 8, 6),
+            expand=True,
+        )
+
         page.add(
             ft.Row([
-                # Left: Preview with loading overlay
+                # Left: Preview + Progress/Status
                 ft.Container(
-                    content=ft.Stack([
+                    content=ft.Column([
                         ft.Container(
-                            content=preview_viewer,
-                            border=ft.border.all(1, outline_color),
-                            padding=8,
+                            content=ft.Stack([
+                                ft.Container(
+                                    content=preview_viewer,
+                                    border=ft.border.all(1, outline_color),
+                                    padding=8,
+                                ),
+                                ft.Container(
+                                    content=preview_loading_ring,
+                                    alignment=ft.alignment.Alignment(0, 0),
+                                ),
+                            ]),
+                            expand=True,
                         ),
-                        ft.Container(
-                            content=preview_loading_ring,
-                            alignment=ft.alignment.Alignment(0, 0),
-                        ),
-                    ]),
+                        ft.Row([progress_bar, status_text], spacing=8),
+                    ], expand=True),
                     expand=1,
                     padding=ft.Padding(4, 4, 2, 4),
                 ),
-                # Right: Settings + Tabs + Log + Status
+                # Right: Settings + Tabs (Image Split / Template / Log)
                 ft.Container(
                     content=ft.Column([
                         # 共通設定
-                        common_settings,
-                        # タブ
+                        ft.Row(
+                            [common_settings, theme_icon],
+                            vertical_alignment=ft.CrossAxisAlignment.START,
+                        ),
+                        # タブ (3 tabs: Image Split | Template | Log)
                         ft.Tabs(
-                            length=2,
+                            length=3,
                             selected_index=0,
                             on_change=handlers.on_tab_change,
                             content=ft.Column([
                                 ft.TabBar(tabs=[
                                     ft.Tab(label="Image Split", icon=ft.Icons.IMAGE),
                                     ft.Tab(label="Template", icon=ft.Icons.GRID_ON),
+                                    ft.Tab(label="Log", icon=ft.Icons.TERMINAL),
                                 ]),
-                                ft.TabBarView(controls=[tab_image, tab_template], height=250),
-                            ]),
-                        ),
-                        ft.Divider(height=2),
-                        # Status & Progress
-                        ft.Row([progress_bar, status_text]),
-                        # Log
-                        ft.Row(
-                            [ft.Text("Log", weight=ft.FontWeight.BOLD, size=12), clear_log_btn, copy_log_btn, theme_icon],
-                            alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
-                        ),
-                        ft.Container(
-                            content=log_field,
-                            border=ft.border.all(1, outline_color),
-                            padding=8,
+                                ft.TabBarView(
+                                    controls=[tab_image, tab_template, tab_log],
+                                    expand=True,
+                                ),
+                            ], expand=True),
                             expand=True,
                         ),
                     ], expand=True),

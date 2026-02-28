@@ -387,13 +387,30 @@ class GuiHandlersSizeMixin:
              be re-evaluated at execution time — the user may have switched
              tabs or cleared the input field during the debounce window.
         How: Re-checks auto_preview_enabled and input state, then delegates
-             to on_preview. All exceptions are suppressed to avoid crashing
-             the Flet event loop.
+             to on_preview via page.run_thread so the Flet UI thread
+             processes the update and repaints immediately. All exceptions
+             are suppressed to avoid crashing the Flet event loop.
         """
         if not self.state.auto_preview_enabled:
             return
         if self.state.is_image_split_tab() and not (self.w.image.input_field.value or "").strip():
             return
+        # Why: threading.Timer fires on a non-UI thread; calling page.update()
+        #      directly from here does not reliably trigger a Flet repaint.
+        # How: Wrap the preview call in page.run_thread so Flet schedules
+        #      the update on its own event loop.
+        try:
+            self.page.run_thread(self._run_preview_in_thread)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _run_preview_in_thread(self) -> None:
+        """Preview generation entry point for page.run_thread.
+
+        Why: page.run_thread expects a callable; this thin wrapper ensures
+             exceptions do not propagate to Flet's internal error handler.
+        How: Delegates to on_preview and catches all errors.
+        """
         try:
             self.on_preview(None)  # type: ignore[attr-defined]
         except Exception:  # noqa: BLE001
