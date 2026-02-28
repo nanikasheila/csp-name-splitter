@@ -67,8 +67,8 @@ class WidgetLayoutMixin:
                 ft.Row([
                     fields["config_field"],
                     ft.IconButton(
-                        icon=ft.Icons.SETTINGS,
-                        tooltip="Select config YAML/JSON",
+                        icon=ft.Icons.FOLDER_OPEN,
+                        tooltip="Select config file",
                         on_click=pick_config,
                     ),
                 ]),
@@ -76,7 +76,11 @@ class WidgetLayoutMixin:
                 # Page size & DPI
                 ft.Row([
                     ft.Icon(ft.Icons.STRAIGHTEN, size=16),
-                    ft.Text("Page size & DPI", weight=ft.FontWeight.BOLD, size=12)
+                    ft.Text("Page size & DPI", weight=ft.FontWeight.BOLD, size=12),
+                    ft.Tooltip(
+                        message="DPI: 1インチあたりのドット数。印刷解像度に合わせてください",
+                        content=ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.OUTLINE),
+                    ),
                 ], spacing=4),
                 ft.Row([
                     fields["page_size_field"],
@@ -98,26 +102,40 @@ class WidgetLayoutMixin:
                 # Grid settings
                 ft.Row([
                     ft.Icon(ft.Icons.GRID_VIEW, size=16),
-                    ft.Text("Grid settings", weight=ft.FontWeight.BOLD, size=12)
+                    ft.Text("Grid settings", weight=ft.FontWeight.BOLD, size=12),
                 ], spacing=4),
                 ft.Row([
                     fields["rows_field"],
                     fields["cols_field"],
-                    fields["order_field"]
+                    ft.Tooltip(
+                        message="右→左: 日本の漫画形式\n左→右: 海外コミック形式",
+                        content=fields["order_field"],
+                    ),
                 ], wrap=True),
                 ft.Row([
-                    fields["gutter_unit_field"],
+                    ft.Tooltip(
+                        message="コマとコマの間の隙間（間隔）",
+                        content=fields["gutter_unit_field"],
+                    ),
                     fields["gutter_field"]
                 ], wrap=True),
                 ft.Row([
                     fields["grid_color_field"],
-                    fields["grid_alpha_field"],
+                    fields["grid_color_swatch"],
+                    ft.Tooltip(
+                        message="不透明度（0=透明、255=不透明）",
+                        content=fields["grid_alpha_field"],
+                    ),
                     fields["grid_width_field"]
                 ], wrap=True),
                 ft.Divider(height=2),
                 ft.Row([
                     ft.Icon(ft.Icons.CROP_FREE, size=16),
-                    ft.Text("Margins", weight=ft.FontWeight.BOLD, size=12)
+                    ft.Text("Margins", weight=ft.FontWeight.BOLD, size=12),
+                    ft.Tooltip(
+                        message="ページ端から有効領域までの余白",
+                        content=ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.OUTLINE),
+                    ),
                 ], spacing=4),
                 ft.Row([
                     fields["margin_unit_field"],
@@ -226,6 +244,7 @@ class WidgetLayoutMixin:
                                     fields["finish_offset_x_field"],
                                     fields["finish_offset_y_field"],
                                     fields["finish_color_field"],
+                                    fields["finish_color_swatch"],
                                     fields["finish_alpha_field"],
                                     fields["finish_line_width_field"]
                                 ], wrap=True),
@@ -255,6 +274,7 @@ class WidgetLayoutMixin:
                                     fields["basic_offset_x_field"],
                                     fields["basic_offset_y_field"],
                                     fields["basic_color_field"],
+                                    fields["basic_color_swatch"],
                                     fields["basic_alpha_field"],
                                     fields["basic_line_width_field"]
                                 ], wrap=True),

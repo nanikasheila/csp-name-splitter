@@ -138,6 +138,12 @@ class WidgetBuilder(WidgetLayoutMixin):
         )
         fields["grid_alpha_field"] = ft.TextField(label="Alpha", value="170", width=90)
         fields["grid_width_field"] = ft.TextField(label="Width px", value="1", width=90)
+        outline = ft.Colors.OUTLINE if hasattr(ft, "Colors") else ft.colors.OUTLINE
+        fields["grid_color_swatch"] = ft.Container(
+            width=24, height=24, border_radius=4,
+            bgcolor="#FF5030",
+            border=ft.border.all(1, outline),
+        )
         
         # -- Margin (4 directions + unit) --
         fields["margin_unit_field"] = ft.Dropdown(
@@ -231,6 +237,12 @@ class WidgetBuilder(WidgetLayoutMixin):
         fields["finish_line_width_field"] = ft.TextField(
             label="Line px", value="2", width=90
         )
+        outline = ft.Colors.OUTLINE if hasattr(ft, "Colors") else ft.colors.OUTLINE
+        fields["finish_color_swatch"] = ft.Container(
+            width=24, height=24, border_radius=4,
+            bgcolor="#FFFFFF",
+            border=ft.border.all(1, outline),
+        )
         
         # -- Basic frame --
         fields["draw_basic_field"] = ft.Checkbox(
@@ -265,6 +277,12 @@ class WidgetBuilder(WidgetLayoutMixin):
         fields["basic_line_width_field"] = ft.TextField(
             label="Line px", value="2", width=90
         )
+        outline = ft.Colors.OUTLINE if hasattr(ft, "Colors") else ft.colors.OUTLINE
+        fields["basic_color_swatch"] = ft.Container(
+            width=24, height=24, border_radius=4,
+            bgcolor="#00AAFF",
+            border=ft.border.all(1, outline),
+        )
         
         return fields
     
@@ -294,6 +312,9 @@ class WidgetBuilder(WidgetLayoutMixin):
             min_scale=0.1,
             max_scale=5.0,
             boundary_margin=ft.Margin.all(100),
+        )
+        elements["preview_loading_ring"] = ft.ProgressRing(
+            width=48, height=48, visible=False,
         )
         
         return elements
