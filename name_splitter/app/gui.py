@@ -35,6 +35,7 @@ from name_splitter.app.gui_state import GuiState
 from name_splitter.app.gui_handlers import GuiWidgets, GuiHandlers
 from name_splitter.app.gui_widgets import WidgetBuilder
 from name_splitter.app.gui_types import CommonFields, ImageFields, TemplateFields, UiElements
+from name_splitter.app.app_settings import load_app_settings, save_app_settings
 
 
 def main() -> None:
@@ -45,8 +46,15 @@ def main() -> None:
 
     def _app(page: ft.Page) -> None:
         page.title = "CSP Name Splitter"
-        page.window.width = 1200
-        page.window.height = 850
+
+        # Load persisted settings (window size, theme, recent files)
+        app_settings = load_app_settings()
+        page.window.width = app_settings.window_width
+        page.window.height = app_settings.window_height
+        page.theme_mode = (
+            ft.ThemeMode.DARK if app_settings.theme_mode == "dark"
+            else ft.ThemeMode.LIGHT
+        )
 
         # ============================================================== #
         #  Build widgets using WidgetBuilder                             #
@@ -147,6 +155,8 @@ def main() -> None:
                 return
             if files:
                 config_field.value = files[0].path
+                app_settings.add_recent_config(files[0].path)
+                save_app_settings(app_settings)
                 handlers.on_config_change(None)  # UI反映 + 状態更新
                 handlers.flush()
 
@@ -164,6 +174,8 @@ def main() -> None:
                 return
             if files:
                 input_field.value = files[0].path
+                app_settings.add_recent_input(files[0].path)
+                save_app_settings(app_settings)
                 handlers.auto_preview_if_enabled(None)  # 画像選択時に自動プレビュー
                 handlers.flush()
 
@@ -314,6 +326,27 @@ def main() -> None:
         copy_log_btn = ft.OutlinedButton("Copy log", on_click=handlers.on_copy_log, icon=ft.Icons.COPY)
         clear_log_btn = ft.OutlinedButton("Clear", on_click=handlers.on_clear_log, icon=ft.Icons.DELETE_OUTLINE)
 
+        # Theme toggle button
+        theme_icon = ft.IconButton(
+            icon=ft.Icons.DARK_MODE if page.theme_mode == ft.ThemeMode.LIGHT else ft.Icons.LIGHT_MODE,
+            tooltip="Toggle dark/light theme",
+        )
+
+        def on_theme_toggle(_: ft.ControlEvent) -> None:
+            """Switch between dark and light themes and persist the choice."""
+            if page.theme_mode == ft.ThemeMode.LIGHT:
+                page.theme_mode = ft.ThemeMode.DARK
+                theme_icon.icon = ft.Icons.LIGHT_MODE
+                app_settings.theme_mode = "dark"
+            else:
+                page.theme_mode = ft.ThemeMode.LIGHT
+                theme_icon.icon = ft.Icons.DARK_MODE
+                app_settings.theme_mode = "light"
+            save_app_settings(app_settings)
+            page.update()
+
+        theme_icon.on_click = on_theme_toggle
+
         # ============================================================== #
         #  Build tab content using WidgetBuilder                         #
         # ============================================================== #
@@ -367,7 +400,7 @@ def main() -> None:
                                     ft.Tab(label="Image Split", icon=ft.Icons.IMAGE),
                                     ft.Tab(label="Template", icon=ft.Icons.GRID_ON),
                                 ]),
-                                ft.TabBarView(controls=[tab_image, tab_template], height=220),
+                                ft.TabBarView(controls=[tab_image, tab_template], height=250),
                             ]),
                         ),
                         ft.Divider(height=2),
@@ -375,7 +408,7 @@ def main() -> None:
                         ft.Row([progress_bar, status_text]),
                         # Log
                         ft.Row(
-                            [ft.Text("Log", weight=ft.FontWeight.BOLD, size=12), clear_log_btn, copy_log_btn],
+                            [ft.Text("Log", weight=ft.FontWeight.BOLD, size=12), clear_log_btn, copy_log_btn, theme_icon],
                             alignment=ft.MainAxisAlignment.SPACE_BETWEEN,
                         ),
                         ft.Container(
@@ -406,6 +439,18 @@ def main() -> None:
                     handlers.on_cancel(None)
 
         page.on_keyboard_event = on_keyboard
+
+        # Persist window size on resize
+        def on_window_resize(_: ft.ControlEvent) -> None:
+            """Save window dimensions when the user resizes the window."""
+            try:
+                app_settings.window_width = int(page.window.width)
+                app_settings.window_height = int(page.window.height)
+                save_app_settings(app_settings)
+            except Exception:  # noqa: BLE001
+                pass
+
+        page.window.on_resized = on_window_resize
 
     ft.app(target=_app)
 
