@@ -1,0 +1,47 @@
+# Why: Push 前にローカルで CI 相当のチェックを実行し、壊れたコードが
+#      リモートに到達するのを防ぐ。
+# How: pre-push ステージで CI ワークフローと同じ 4 ジョブを再現する。
+#      - JSON スキーマ検証
+#      - .github 設定ファイル検証
+#      - pytest (ユニットテスト)
+#      - mypy (型チェック)
+
+repos:
+  - repo: local
+    hooks:
+      # ── 1. JSON スキーマ検証 ──────────────────────────────
+      - id: validate-schemas
+        name: Validate JSON schemas
+        language: python
+        entry: python tools/validate-schemas/validate_schemas.py
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      # ── 2. .github 設定ファイル検証 ──────────────────────
+      - id: validate-config
+        name: Validate .github config
+        language: python
+        entry: python tools/validate-github-config/validate_config.py
+        additional_dependencies: ["pyyaml>=6.0"]
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      # ── 3. ユニットテスト ────────────────────────────────
+      - id: pytest
+        name: Run pytest
+        language: system
+        entry: python -m pytest tests/ -x -q
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
+
+      # ── 4. 型チェック (mypy) ─────────────────────────────
+      - id: mypy
+        name: Run mypy
+        language: system
+        entry: python -m mypy name_splitter/
+        pass_filenames: false
+        always_run: true
+        stages: [pre-push]
