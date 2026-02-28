@@ -493,20 +493,18 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
 
         Why: The active tab determines which preview to show when
              auto_preview_if_enabled is triggered.
-        How: Updates state.tab index for Image Split (0) and Template (1).
-             Log tab (2) keeps the previous preview-relevant index unchanged.
-             Triggers a synchronous preview refresh so the image updates
-             immediately without waiting for a debounce timer.
+        How: Maps UI tab indices to preview-relevant state:
+             Tab 0 (Config) and Tab 3 (Log) are not preview-relevant.
+             Tab 1 (Image Split) → state index 0.
+             Tab 2 (Template) → state index 1.
+             Preview-relevant tabs trigger an immediate synchronous refresh.
         """
         tab_index = int(e.data)
-        # Why: Log tab (index 2) is not preview-relevant; preserve the
-        #      last Image Split / Template selection for preview logic.
-        if tab_index < 2:
-            self.state.set_tab(tab_index)
+        # Why: Only Image Split (1) and Template (2) need preview updates.
+        _TAB_TO_STATE = {1: 0, 2: 1}
+        if tab_index in _TAB_TO_STATE:
+            self.state.set_tab(_TAB_TO_STATE[tab_index])
             self.flush()
-            # Why: Tab switch is an explicit user action — debounce adds
-            #      perceived latency with no benefit. Call on_preview
-            #      directly on the UI thread so the result renders immediately.
             if self.state.auto_preview_enabled:
                 try:
                     self.on_preview(None)

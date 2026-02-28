@@ -56,6 +56,30 @@ def main() -> None:
             else ft.ThemeMode.LIGHT
         )
 
+        # Why: Default Material 3 widgets are large for a data-heavy tool.
+        # How: COMPACT density reduces control height; smaller body/label
+        #      fonts give more room for settings on screen.
+        page.theme = ft.Theme(
+            visual_density=ft.VisualDensity.COMPACT,
+            text_theme=ft.TextTheme(
+                body_medium=ft.TextStyle(size=13),
+                body_small=ft.TextStyle(size=11),
+                label_large=ft.TextStyle(size=13),
+                label_medium=ft.TextStyle(size=11),
+                label_small=ft.TextStyle(size=10),
+            ),
+        )
+        page.dark_theme = ft.Theme(
+            visual_density=ft.VisualDensity.COMPACT,
+            text_theme=ft.TextTheme(
+                body_medium=ft.TextStyle(size=13),
+                body_small=ft.TextStyle(size=11),
+                label_large=ft.TextStyle(size=13),
+                label_medium=ft.TextStyle(size=11),
+                label_small=ft.TextStyle(size=10),
+            ),
+        )
+
         # ============================================================== #
         #  Build widgets using WidgetBuilder                             #
         # ============================================================== #
@@ -350,16 +374,16 @@ def main() -> None:
         # ============================================================== #
         #  Build tab content using WidgetBuilder                         #
         # ============================================================== #
+        tab_config = builder.build_tab_config(
+            common_fields, pick_config,
+            reset_config=handlers.on_reset_defaults,
+        )
         tab_image = builder.build_tab_image(
             image_fields, run_btn, cancel_btn, pick_input, pick_out_dir,
             open_output_folder=handlers.on_open_output_folder,
         )
         tab_template = builder.build_tab_template(
             template_fields, tmpl_btn, pick_template_out
-        )
-        common_settings = builder.build_common_settings_area(
-            common_fields, pick_config,
-            reset_config=handlers.on_reset_defaults,
         )
 
         # ============================================================== #
@@ -391,12 +415,16 @@ def main() -> None:
                 # Left: Preview + Progress/Status
                 ft.Container(
                     content=ft.Column([
+                        ft.Row([
+                            ft.Icon(ft.Icons.PREVIEW, size=16),
+                            ft.Text("Preview", weight=ft.FontWeight.BOLD, size=12),
+                        ], spacing=4),
                         ft.Container(
                             content=ft.Stack([
                                 ft.Container(
                                     content=preview_viewer,
                                     border=ft.border.all(1, outline_color),
-                                    padding=8,
+                                    padding=4,
                                 ),
                                 ft.Container(
                                     content=preview_loading_ring,
@@ -406,36 +434,34 @@ def main() -> None:
                             expand=True,
                         ),
                         ft.Row([progress_bar, status_text], spacing=8),
-                    ], expand=True),
+                    ], expand=True, spacing=4),
                     expand=1,
                     padding=ft.Padding(4, 4, 2, 4),
                 ),
-                # Right: Settings + Tabs (Image Split / Template / Log)
+                # Right: 4 Tabs (Config / Image Split / Template / Log)
                 ft.Container(
                     content=ft.Column([
-                        # 共通設定 + theme toggle
-                        ft.Row(
-                            [common_settings, theme_icon],
-                            vertical_alignment=ft.CrossAxisAlignment.START,
-                            expand=True,
-                        ),
-                        # タブ (3 tabs: Image Split | Template | Log)
                         ft.Tabs(
-                            length=3,
+                            length=4,
                             selected_index=0,
                             on_change=handlers.on_tab_change,
                             content=ft.Column([
                                 ft.TabBar(tabs=[
+                                    ft.Tab(label="Config", icon=ft.Icons.SETTINGS),
                                     ft.Tab(label="Image Split", icon=ft.Icons.IMAGE),
                                     ft.Tab(label="Template", icon=ft.Icons.GRID_ON),
                                     ft.Tab(label="Log", icon=ft.Icons.TERMINAL),
                                 ]),
                                 ft.TabBarView(
-                                    controls=[tab_image, tab_template, tab_log],
+                                    controls=[tab_config, tab_image, tab_template, tab_log],
                                     expand=True,
                                 ),
                             ], expand=True),
                             expand=True,
+                        ),
+                        ft.Row(
+                            [theme_icon],
+                            alignment=ft.MainAxisAlignment.END,
                         ),
                     ], expand=True),
                     expand=1,

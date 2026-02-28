@@ -35,17 +35,17 @@ class WidgetLayoutMixin:
     if TYPE_CHECKING:
         ft: Any  # Flet module — set in WidgetBuilder.__init__
 
-    def build_common_settings_area(
+    def build_tab_config(
         self,
         fields: dict,
         pick_config: Callable,
         reset_config: Callable | None = None,
     ) -> object:
-        """Build the common settings panel (config, page size, grid, margins).
+        """Build the Config tab content (config file, page size, grid, margins).
 
-        Why: The right-hand settings column always shows the common fields
-             above the tab area; building them in one method keeps layout
-             logic out of gui.py.
+        Why: All common settings were previously shown above tabs, making
+             them always visible but consuming vertical space. Moving them
+             into a dedicated Config tab gives each panel full height.
         How: Wraps all field groups in labelled Rows with icon prefixes
              inside a scrollable Column in a padded Container.
 
