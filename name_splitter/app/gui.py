@@ -413,10 +413,11 @@ def main() -> None:
                 # Right: Settings + Tabs (Image Split / Template / Log)
                 ft.Container(
                     content=ft.Column([
-                        # 共通設定
+                        # 共通設定 + theme toggle
                         ft.Row(
                             [common_settings, theme_icon],
                             vertical_alignment=ft.CrossAxisAlignment.START,
+                            expand=True,
                         ),
                         # タブ (3 tabs: Image Split | Template | Log)
                         ft.Tabs(
