@@ -79,8 +79,13 @@ class ImageData:
                 )
                 row[dest_x] = (out_r, out_g, out_b, out_a)
 
-    def save(self, path: Path) -> None:
-        # 画像を保存（PPMは内蔵、PNGはPillow）
+    def save(self, path: Path, *, dpi: int = 0) -> None:
+        """Save image to file. PPM uses built-in writer; PNG uses Pillow.
+
+        Why: DPI metadata in output PNGs enables correct physical sizing
+             in print workflows and PDF embedding.
+        How: When dpi > 0, passes dpi tuple to Pillow's save().
+        """
         ext = path.suffix.lower().lstrip(".")
         if ext == "ppm":
             _save_ppm(self, path)
@@ -91,7 +96,31 @@ class ImageData:
             raise RuntimeError("Pillow is required to save PNG files") from exc
         image = Image.new("RGBA", (self.width, self.height))
         image.putdata([pixel for row in self.pixels for pixel in row])
-        image.save(path)
+        save_kwargs: dict[str, object] = {}
+        if dpi > 0:
+            save_kwargs["dpi"] = (dpi, dpi)
+        image.save(str(path), **save_kwargs)  # type: ignore[arg-type]
+
+    def resize(self, new_width: int, new_height: int) -> "ImageData":
+        """Resize image using Pillow LANCZOS resampling.
+
+        Why: Output DPI control requires high-quality downscaling of
+             cropped page images (e.g., 600dpi source → 350dpi output).
+        How: Converts to PIL Image, resizes with LANCZOS, converts back.
+        """
+        if new_width <= 0 or new_height <= 0:
+            return ImageData.blank(max(1, new_width), max(1, new_height))
+        if new_width == self.width and new_height == self.height:
+            return self
+        try:
+            from PIL import Image
+            from PIL.Image import Resampling
+        except ImportError as exc:
+            raise RuntimeError("Pillow is required for image resize") from exc
+        pil_img = Image.new("RGBA", (self.width, self.height))
+        pil_img.putdata([pixel for row in self.pixels for pixel in row])
+        resized = pil_img.resize((new_width, new_height), Resampling.LANCZOS)
+        return ImageData.from_pil(resized)
 
 
 def composite_layers(

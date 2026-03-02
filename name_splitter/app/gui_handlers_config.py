@@ -203,6 +203,18 @@ class GuiHandlersConfigMixin:
             # Apply output format if available
             if hasattr(cfg.output, "container"):
                 self.w.image.output_format_field.value = cfg.output.container
+            # B-1: Output DPI
+            if hasattr(cfg.output, "output_dpi"):
+                self.w.image.output_dpi_field.value = str(cfg.output.output_dpi)
+            # B-2: Page numbering
+            if hasattr(cfg.output, "page_number_start"):
+                self.w.image.page_number_start_field.value = str(cfg.output.page_number_start)
+            if hasattr(cfg.output, "skip_pages") and cfg.output.skip_pages:
+                self.w.image.skip_pages_field.value = ",".join(str(p) for p in cfg.output.skip_pages)
+            else:
+                self.w.image.skip_pages_field.value = ""
+            if hasattr(cfg.output, "odd_even"):
+                self.w.image.odd_even_field.value = cfg.output.odd_even
 
             self.update_size_info()
             self.add_log("Config applied to UI")
