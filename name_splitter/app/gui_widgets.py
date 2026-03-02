@@ -184,7 +184,11 @@ class WidgetBuilder(WidgetLayoutMixin):
         ft = self.ft
         
         fields = {}
-        fields["input_field"] = ft.TextField(label="Input image (PNG)", expand=True)
+        fields["input_field"] = ft.TextField(
+            label="入力画像を選択 (PNG)",
+            expand=True,
+            hint_text="画像ファイルをここにパス入力 または「選択」ボタンをクリック",
+        )
         fields["out_dir_field"] = ft.TextField(
             label="Output directory (optional)", expand=True
         )
@@ -333,6 +337,50 @@ class WidgetBuilder(WidgetLayoutMixin):
         )
         
         return elements
+
+    def create_batch_fields(self) -> dict[str, Any]:
+        """Create Batch tab fields: input/output dir, recursive flag, run/cancel, status.
+
+        Why: Batch processing requires a dedicated set of controls distinct from
+             single-image ImageFields. Centralising widget creation here keeps
+             gui.py and the layout mixin free of instantiation details.
+        How: Creates TextFields for directory paths, a Checkbox for recursive
+             scan, ElevatedButton/OutlinedButton for run/cancel, and a Text
+             widget for per-job progress display.
+
+        Returns:
+            Dictionary with all batch field widgets keyed by field name.
+        """
+        ft = self.ft
+
+        fields: dict[str, Any] = {}
+        fields["batch_dir_field"] = ft.TextField(
+            label="入力ディレクトリ",
+            expand=True,
+            hint_text="PNG ファイルが入っているフォルダを指定",
+        )
+        fields["batch_out_dir_field"] = ft.TextField(
+            label="出力ディレクトリ（省略可）",
+            expand=True,
+            hint_text="省略時は各画像の隣に出力",
+        )
+        fields["batch_recursive_field"] = ft.Checkbox(
+            label="サブフォルダを再帰検索",
+            value=False,
+            tooltip="ON: サブフォルダ内の PNG も対象にする",
+        )
+        fields["batch_run_btn"] = ft.ElevatedButton(
+            "Batch Run",
+            icon=ft.Icons.PLAY_ARROW,
+        )
+        fields["batch_cancel_btn"] = ft.OutlinedButton(
+            "Cancel",
+            icon=ft.Icons.CANCEL,
+            disabled=True,
+        )
+        fields["batch_status_text"] = ft.Text("Idle", size=12, italic=True)
+
+        return fields
 
 
 __all__ = ["WidgetBuilder", "TRANSPARENT_PNG_BASE64"]

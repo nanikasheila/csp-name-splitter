@@ -1,6 +1,6 @@
 # モジュールマップ
 
-**最終更新**: 2026年3月1日
+**最終更新**: 2026年3月1日（v1.0.0 製品化対応版）
 
 ---
 
@@ -36,8 +36,10 @@
 | モジュール | 責務 |
 |---|---|
 | `cli.py` | CLI エントリーポイント。引数解析 → `job.run_job()` 呼び出し |
+| `main.py` | パッケージ配布用エントリーポイント（flet pack / PyInstaller 向け） |
 | `gui.py` | Flet ベースの GUI メインウィンドウ構築・起動 |
 | `gui_handlers.py` | GUI イベントハンドラ統合クラス（Mixin パターン） |
+| `gui_handlers_batch.py` | バッチ処理 GUI Mixin（フォルダスキャン・複数ジョブのオーケストレーション） |
 | `gui_handlers_config.py` | コンフィグ読み込み・UI 反映 Mixin |
 | `gui_handlers_size.py` | ページ/キャンバスサイズ計算・UI 更新 Mixin |
 | `gui_state.py` | GUI 状態管理（選択状態・パス等） |
@@ -45,11 +47,14 @@
 | `gui_utils.py` | ユーティリティ関数（パース・単位変換・サイズ計算） |
 | `gui_widgets.py` | ウィジェット生成統合クラス（Mixin パターン） |
 | `gui_widgets_layout.py` | レイアウト構築 Mixin |
+| `app_settings.py` | アプリ設定永続化（ウィンドウサイズ・テーマ・最近使ったファイル等） |
+| `error_messages.py` | GUI 向けエラーメッセージ日本語化辞書 |
 
 ### GUI Mixin 構造
 
 ```
-GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin)
+GuiHandlers(GuiHandlersBatchMixin, GuiHandlersSizeMixin, GuiHandlersConfigMixin)
+  ├── GuiHandlersBatchMixin   (gui_handlers_batch.py)
   ├── GuiHandlersSizeMixin    (gui_handlers_size.py)
   └── GuiHandlersConfigMixin  (gui_handlers_config.py)
 
