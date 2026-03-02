@@ -241,10 +241,10 @@ def _render_template_image(
                     bbox = draw.textbbox((0, 0), text, font=font)
                     text_width = bbox[2] - bbox[0]
                     text_height = bbox[3] - bbox[1]
-                except Exception:  # noqa: BLE001
+                except (AttributeError, TypeError, OSError):
                     try:
                         text_width, text_height = draw.textsize(text, font=font)  # type: ignore
-                    except Exception:  # noqa: BLE001
+                    except (AttributeError, TypeError, OSError):
                         continue
                 
                 cell_center_x = (cell.x0 + cell.x1) // 2
