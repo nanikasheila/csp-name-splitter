@@ -41,6 +41,8 @@ class WidgetLayoutMixin:
         pick_config: Callable,
         reset_config: Callable | None = None,
         save_config: Callable | None = None,
+        preset_fields: Any = None,
+        recent_config_dropdown: Any = None,
     ) -> object:
         """Build the Config tab content (config file, page size, grid, margins).
 
@@ -49,11 +51,16 @@ class WidgetLayoutMixin:
              into a dedicated Config tab gives each panel full height.
         How: Wraps all field groups in labelled Rows with icon prefixes
              inside a scrollable Column in a padded Container.
+             Optional preset_fields and recent_config_dropdown sections are
+             appended when provided.
 
         Args:
             fields: Dict of all common field widgets keyed by field name
             pick_config: Async FilePicker callback for config file selection
             reset_config: Optional callback to reset all settings to defaults
+            save_config: Optional callback to save current settings to YAML
+            preset_fields: Optional PresetFields for preset save/load/delete
+            recent_config_dropdown: Optional ft.Dropdown for recent configs
 
         Returns:
             ft.Container with the assembled common settings layout
@@ -84,83 +91,113 @@ class WidgetLayoutMixin:
                 ),
             )
 
-        return ft.Container(
-            content=ft.Column([
-                # Config file row
+        # Build the base column items
+        col_items: list[Any] = [
+            # Config file row
+            ft.Row([
+                ft.Icon(ft.Icons.DESCRIPTION, size=16),
+                ft.Text("Config file", weight=ft.FontWeight.BOLD, size=12)
+            ], spacing=4),
+            ft.Row([
+                fields["config_field"],
+                *config_buttons,
+            ]),
+        ]
+
+        # Recent config dropdown (A-2)
+        if recent_config_dropdown is not None:
+            col_items.append(
                 ft.Row([
-                    ft.Icon(ft.Icons.DESCRIPTION, size=16),
-                    ft.Text("Config file", weight=ft.FontWeight.BOLD, size=12)
+                    ft.Icon(ft.Icons.HISTORY, size=14, color=ft.Colors.OUTLINE),
+                    recent_config_dropdown,
                 ], spacing=4),
-                ft.Row([
-                    fields["config_field"],
-                    *config_buttons,
-                ]),
-                ft.Divider(height=2),
-                # Page size & DPI
-                ft.Row([
-                    ft.Icon(ft.Icons.STRAIGHTEN, size=16),
-                    ft.Text("Page size & DPI", weight=ft.FontWeight.BOLD, size=12),
-                    ft.Icon(
-                        ft.Icons.INFO_OUTLINE, size=14,
-                        color=ft.Colors.OUTLINE,
-                        tooltip="DPI: 1インチあたりのドット数。印刷解像度に合わせてください",
-                    ),
-                ], spacing=4),
-                ft.Row([
-                    fields["page_size_field"],
-                    fields["orientation_field"],
-                    fields["dpi_field"]
-                ], wrap=True),
-                ft.Row([
-                    fields["custom_size_unit_field"],
-                    fields["custom_width_field"],
-                    fields["custom_height_field"]
-                ], wrap=True),
-                ft.Container(
-                    content=fields["size_info_text"],
-                    bgcolor=ft.Colors.SURFACE_CONTAINER,
-                    border_radius=6,
-                    padding=ft.Padding(8, 4, 8, 4),
+            )
+
+        col_items += [
+            ft.Divider(height=2),
+            # Page size & DPI
+            ft.Row([
+                ft.Icon(ft.Icons.STRAIGHTEN, size=16),
+                ft.Text("Page size & DPI", weight=ft.FontWeight.BOLD, size=12),
+                ft.Icon(
+                    ft.Icons.INFO_OUTLINE, size=14,
+                    color=ft.Colors.OUTLINE,
+                    tooltip="DPI: 1インチあたりのドット数。印刷解像度に合わせてください",
                 ),
+            ], spacing=4),
+            ft.Row([
+                fields["page_size_field"],
+                fields["orientation_field"],
+                fields["dpi_field"]
+            ], wrap=True),
+            ft.Row([
+                fields["custom_size_unit_field"],
+                fields["custom_width_field"],
+                fields["custom_height_field"]
+            ], wrap=True),
+            ft.Container(
+                content=fields["size_info_text"],
+                bgcolor=ft.Colors.SURFACE_CONTAINER,
+                border_radius=6,
+                padding=ft.Padding(8, 4, 8, 4),
+            ),
+            ft.Divider(height=2),
+            # Grid settings
+            ft.Row([
+                ft.Icon(ft.Icons.GRID_VIEW, size=16),
+                ft.Text("Grid settings", weight=ft.FontWeight.BOLD, size=12),
+            ], spacing=4),
+            ft.Row([
+                fields["rows_field"],
+                fields["cols_field"],
+                fields["order_field"],
+            ], wrap=True),
+            ft.Row([
+                fields["gutter_unit_field"],
+                fields["gutter_field"]
+            ], wrap=True),
+            ft.Row([
+                fields["grid_color_field"],
+                fields["grid_color_swatch"],
+                fields["grid_alpha_field"],
+                fields["grid_width_field"]
+            ], wrap=True),
+            ft.Divider(height=2),
+            ft.Row([
+                ft.Icon(ft.Icons.CROP_FREE, size=16),
+                ft.Text("Margins", weight=ft.FontWeight.BOLD, size=12),
+                ft.Icon(
+                    ft.Icons.INFO_OUTLINE, size=14,
+                    color=ft.Colors.OUTLINE,
+                    tooltip="ページ端から有効領域までの余白",
+                ),
+            ], spacing=4),
+            ft.Row([
+                fields["margin_unit_field"],
+                fields["margin_top_field"],
+                fields["margin_bottom_field"],
+                fields["margin_left_field"],
+                fields["margin_right_field"],
+            ], wrap=True),
+        ]
+
+        # Preset section (A-1)
+        if preset_fields is not None:
+            col_items += [
                 ft.Divider(height=2),
-                # Grid settings
                 ft.Row([
-                    ft.Icon(ft.Icons.GRID_VIEW, size=16),
-                    ft.Text("Grid settings", weight=ft.FontWeight.BOLD, size=12),
+                    ft.Icon(ft.Icons.BOOKMARK, size=16),
+                    ft.Text("Presets", weight=ft.FontWeight.BOLD, size=12),
                 ], spacing=4),
                 ft.Row([
-                    fields["rows_field"],
-                    fields["cols_field"],
-                    fields["order_field"],
-                ], wrap=True),
-                ft.Row([
-                    fields["gutter_unit_field"],
-                    fields["gutter_field"]
-                ], wrap=True),
-                ft.Row([
-                    fields["grid_color_field"],
-                    fields["grid_color_swatch"],
-                    fields["grid_alpha_field"],
-                    fields["grid_width_field"]
-                ], wrap=True),
-                ft.Divider(height=2),
-                ft.Row([
-                    ft.Icon(ft.Icons.CROP_FREE, size=16),
-                    ft.Text("Margins", weight=ft.FontWeight.BOLD, size=12),
-                    ft.Icon(
-                        ft.Icons.INFO_OUTLINE, size=14,
-                        color=ft.Colors.OUTLINE,
-                        tooltip="ページ端から有効領域までの余白",
-                    ),
-                ], spacing=4),
-                ft.Row([
-                    fields["margin_unit_field"],
-                    fields["margin_top_field"],
-                    fields["margin_bottom_field"],
-                    fields["margin_left_field"],
-                    fields["margin_right_field"],
-                ], wrap=True),
-            ], spacing=8, scroll=ft.ScrollMode.AUTO),
+                    preset_fields.dropdown,
+                    preset_fields.save_btn,
+                    preset_fields.delete_btn,
+                ], wrap=True, spacing=6),
+            ]
+
+        return ft.Container(
+            content=ft.Column(col_items, spacing=8, scroll=ft.ScrollMode.AUTO),
             padding=ft.Padding(8, 4, 8, 4),
             expand=True,
         )
@@ -173,6 +210,8 @@ class WidgetLayoutMixin:
         pick_input: Callable,
         pick_out_dir: Callable,
         open_output_folder: Callable | None = None,
+        recent_input_dropdown: Any = None,
+        quick_run_btn: Any = None,
     ) -> object:
         """Build the Image Split tab layout.
 
@@ -180,6 +219,8 @@ class WidgetLayoutMixin:
              trees that obscure intent when mixed with widget creation code.
         How: Accepts pre-built button and field widgets; assembles them in
              a scrollable Column with icon-button rows for file pickers.
+             Optional recent_input_dropdown (A-2) and quick_run_btn (A-3)
+             are included when provided.
 
         Args:
             fields: Dict of image-split field widgets keyed by field name
@@ -188,6 +229,8 @@ class WidgetLayoutMixin:
             pick_input: Async FilePicker callback for input image selection
             pick_out_dir: Async FilePicker callback for output dir selection
             open_output_folder: Optional callback to open output dir in file manager
+            recent_input_dropdown: Optional Dropdown for recent input images (A-2)
+            quick_run_btn: Optional ElevatedButton for Quick Run (A-3)
 
         Returns:
             ft.Container with the Image Split tab layout
@@ -210,31 +253,50 @@ class WidgetLayoutMixin:
                 ),
             )
 
-        return ft.Container(
-            content=ft.Column([
+        col_items: list[Any] = [
+            ft.Row([
+                fields["input_field"],
+                ft.IconButton(
+                    icon=ft.Icons.FOLDER_OPEN,
+                    tooltip="Select image",
+                    on_click=pick_input,
+                ),
+            ]),
+        ]
+
+        # Recent input dropdown (A-2)
+        if recent_input_dropdown is not None:
+            col_items.append(
                 ft.Row([
-                    fields["input_field"],
-                    ft.IconButton(
-                        icon=ft.Icons.FOLDER_OPEN,
-                        tooltip="Select image",
-                        on_click=pick_input,
-                    ),
-                ]),
-                ft.Row([
-                    fields["out_dir_field"],
-                    *out_dir_buttons,
-                    fields["test_page_field"],
-                ]),
-                ft.Divider(height=2),
-                # Output format selection
-                ft.Row([
-                    ft.Icon(ft.Icons.OUTPUT, size=16),
-                    ft.Text("Output", weight=ft.FontWeight.BOLD, size=12),
+                    ft.Icon(ft.Icons.HISTORY, size=14, color=ft.Colors.OUTLINE),
+                    recent_input_dropdown,
                 ], spacing=4),
-                ft.Row([fields["output_format_field"]]),
-                ft.Divider(height=2),
-                ft.Row([run_btn, cancel_btn]),
-            ], spacing=6, scroll=ft.ScrollMode.AUTO),
+            )
+
+        col_items += [
+            ft.Row([
+                fields["out_dir_field"],
+                *out_dir_buttons,
+                fields["test_page_field"],
+            ]),
+            ft.Divider(height=2),
+            # Output format selection
+            ft.Row([
+                ft.Icon(ft.Icons.OUTPUT, size=16),
+                ft.Text("Output", weight=ft.FontWeight.BOLD, size=12),
+            ], spacing=4),
+            ft.Row([fields["output_format_field"]]),
+            ft.Divider(height=2),
+        ]
+
+        # Run buttons row: Run, Cancel, Quick Run (A-3)
+        run_row_items: list[Any] = [run_btn, cancel_btn]
+        if quick_run_btn is not None:
+            run_row_items.append(quick_run_btn)
+        col_items.append(ft.Row(run_row_items, spacing=6))
+
+        return ft.Container(
+            content=ft.Column(col_items, spacing=6, scroll=ft.ScrollMode.AUTO),
             padding=ft.Padding(8, 6, 8, 6),
         )
 
