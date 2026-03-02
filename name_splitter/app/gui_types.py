@@ -201,6 +201,8 @@ class UiElements:
     preview_loading_ring: Any  # ProgressRing shown during preview generation
     run_btn: Button
     cancel_btn: Button
+    quick_run_btn: Button | None = None
+    recent: Any | None = None  # RecentFields — optional, avoids circular import
 
 
 @dataclass
@@ -222,4 +224,37 @@ class BatchFields:
     batch_status_text: Text
 
 
-__all__ = ["CommonFields", "ImageFields", "TemplateFields", "UiElements", "BatchFields"]
+@dataclass
+class PresetFields:
+    """Preset management UI controls for the Config tab.
+
+    Why: Grouping preset widgets into a typed dataclass mirrors the
+         BatchFields / ImageFields pattern and makes GuiHandlersPresetMixin
+         testable without referencing GuiWidgets directly.
+    How: Three widgets — a dropdown listing saved preset names, and two
+         buttons for saving/deleting the selected/current preset.
+    """
+
+    dropdown: Any      # ft.Dropdown — lists saved preset names
+    save_btn: Any      # ft.ElevatedButton — save current settings as preset
+    delete_btn: Any    # ft.OutlinedButton — delete selected preset
+
+
+@dataclass
+class RecentFields:
+    """Recent-file dropdowns for quick input/config reuse.
+
+    Why: Storing recent-file widgets in a typed dataclass keeps UiElements
+         clean and allows handlers to guard with ``if self.w.ui.recent``.
+    How: Two Dropdown widgets populated from AppSettings.recent_inputs and
+         AppSettings.recent_configs at startup and after each file open.
+    """
+
+    recent_input_dropdown: Any   # ft.Dropdown — recent input image paths
+    recent_config_dropdown: Any  # ft.Dropdown — recent config file paths
+
+
+__all__ = [
+    "CommonFields", "ImageFields", "TemplateFields", "UiElements", "BatchFields",
+    "PresetFields", "RecentFields",
+]
