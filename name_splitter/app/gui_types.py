@@ -156,6 +156,10 @@ class ImageFields:
     out_dir_field: TextField
     test_page_field: TextField
     output_format_field: Dropdown
+    output_dpi_field: TextField
+    page_number_start_field: TextField
+    skip_pages_field: TextField
+    odd_even_field: Dropdown
 
 
 @dataclass

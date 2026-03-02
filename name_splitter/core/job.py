@@ -87,7 +87,12 @@ def run_job(
     report("grid", 1, 1, "Grid computed")
     check_cancel()
 
-    selected_pages = _select_pages(len(cells), test_page)
+    selected_pages = _select_pages(
+        len(cells),
+        test_page,
+        skip=cfg.output.skip_pages,
+        odd_even=cfg.output.odd_even,
+    )
 
     output_dir = _resolve_out_dir(input_image, cfg, out_dir)
     report("render_plan", 0, 1, "Writing plan")
@@ -120,11 +125,13 @@ def run_job(
         pdf_filename = Path(input_image).stem + ".pdf"
         pdf_path = output_dir / pdf_filename
         primary_layer = cfg.output.layer_stack[0] if cfg.output.layer_stack else "flat"
+        # Why: PDF should use target DPI (after resize), not source DPI
+        target_dpi = cfg.output.output_dpi if cfg.output.output_dpi > 0 else cfg.grid.dpi
         export_pdf(
             rendered_pages,
             pdf_path,
             layer_name=primary_layer,
-            dpi=cfg.grid.dpi,
+            dpi=target_dpi,
         )
         resolved_pdf = pdf_path.resolve()
         pdf_size = resolved_pdf.stat().st_size
@@ -134,13 +141,41 @@ def run_job(
     return JobResult(out_dir=output_dir, page_count=len(selected_pages), plan=plan, pdf_path=pdf_path)
 
 
-def _select_pages(total_pages: int, test_page: int | None) -> list[int]:
-    # test_page指定がある場合は対象ページのみ返す
-    if test_page is None:
-        return list(range(total_pages))
-    if test_page <= 0 or test_page > total_pages:
-        raise ValueError(f"test_page must be between 1 and {total_pages}")
-    return [test_page - 1]
+def _select_pages(
+    total_pages: int,
+    test_page: int | None,
+    *,
+    skip: tuple[int, ...] = (),
+    odd_even: str = "all",
+) -> list[int]:
+    """Select which physical pages to render.
+
+    Why: Users need to skip covers, select odd/even pages, or test
+         a single page. All filtering is centralised here so render.py
+         stays simple.
+    How: test_page takes priority. Otherwise build full list, remove
+         skipped pages, then filter by odd/even based on 1-based index.
+    """
+    if test_page is not None:
+        if test_page <= 0 or test_page > total_pages:
+            raise ValueError(f"test_page must be between 1 and {total_pages}")
+        return [test_page - 1]
+
+    # Build full page list (0-indexed)
+    pages = list(range(total_pages))
+
+    # Remove skipped pages (skip is 1-based)
+    if skip:
+        skip_set = {s - 1 for s in skip if 1 <= s <= total_pages}
+        pages = [p for p in pages if p not in skip_set]
+
+    # Filter odd/even (based on 1-based position in remaining pages)
+    if odd_even == "odd":
+        pages = [p for i, p in enumerate(pages) if (i + 1) % 2 == 1]
+    elif odd_even == "even":
+        pages = [p for i, p in enumerate(pages) if (i + 1) % 2 == 0]
+
+    return pages
 
 
 def _resolve_out_dir(input_image: str, cfg: Config, override: str | None) -> Path:

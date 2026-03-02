@@ -353,7 +353,31 @@ class GuiHandlers(
             # Why: GUI output format dropdown overrides config container setting
             # How: Replace output config with user-selected container format
             output_format = (self.w.image.output_format_field.value or "png").strip()
-            cfg = replace(cfg, output=replace(cfg.output, container=output_format))
+            # Why: Read B-1 (output DPI) and B-2 (page numbering) fields from GUI
+            # How: Use safe int conversion with fallback defaults for invalid input
+            output_dpi_str = (self.w.image.output_dpi_field.value or "0").strip()
+            try:
+                output_dpi = int(output_dpi_str) if output_dpi_str else 0
+            except ValueError:
+                output_dpi = 0
+            page_start_str = (self.w.image.page_number_start_field.value or "1").strip()
+            try:
+                page_start = int(page_start_str) if page_start_str else 1
+            except ValueError:
+                page_start = 1
+            skip_str = (self.w.image.skip_pages_field.value or "").strip()
+            skip_pages = tuple(
+                int(s.strip()) for s in skip_str.split(",") if s.strip().isdigit()
+            ) if skip_str else ()
+            odd_even = (self.w.image.odd_even_field.value or "all").strip()
+            cfg = replace(cfg, output=replace(
+                cfg.output,
+                container=output_format,
+                output_dpi=output_dpi,
+                page_number_start=page_start,
+                skip_pages=skip_pages,
+                odd_even=odd_even,
+            ))
             out = (self.w.image.out_dir_field.value or "").strip() or None
             tp = self.w.image.test_page_field.value.strip() if self.w.image.test_page_field.value else ""
             tp_val = int(tp) if tp else None
