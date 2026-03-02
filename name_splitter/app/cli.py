@@ -141,6 +141,14 @@ def _run_template_subcommand(args: argparse.Namespace) -> int:
     Returns:
         Exit code: 0 on success, 1 on error.
     """
+    # Why: Zero or negative rows/cols cause ZeroDivisionError in grid math.
+    if args.rows <= 0 or args.cols <= 0:
+        print("Error: rows and cols must be positive integers", file=sys.stderr)
+        return 2
+    if args.dpi <= 0:
+        print("Error: dpi must be a positive integer", file=sys.stderr)
+        return 2
+
     try:
         from name_splitter.core.config import GridConfig  # noqa: PLC0415
         from name_splitter.core.template import (  # noqa: PLC0415
