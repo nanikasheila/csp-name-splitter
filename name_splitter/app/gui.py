@@ -34,7 +34,10 @@ from name_splitter.core.template import (
 from name_splitter.app.gui_state import GuiState
 from name_splitter.app.gui_handlers import GuiWidgets, GuiHandlers
 from name_splitter.app.gui_widgets import WidgetBuilder
-from name_splitter.app.gui_types import CommonFields, ImageFields, TemplateFields, UiElements, BatchFields
+from name_splitter.app.gui_types import (
+    CommonFields, ImageFields, TemplateFields, UiElements, BatchFields,
+    PresetFields, RecentFields,
+)
 from name_splitter.app.app_settings import load_app_settings, save_app_settings
 
 
@@ -78,6 +81,19 @@ def main() -> None:
         template_fields = builder.create_template_fields()
         ui_elements = builder.create_ui_elements()
         batch_fields = builder.create_batch_fields()
+        preset_fields_dict = builder.create_preset_fields()
+        # A-2: recent file dropdowns
+        recent_input_dd = builder.create_recent_dropdown(
+            "最近の入力画像", app_settings.recent_inputs
+        )
+        recent_config_dd = builder.create_recent_dropdown(
+            "最近のConfig", app_settings.recent_configs
+        )
+        # A-3: Quick Run button
+        quick_run_btn = builder.create_quick_run_button()
+        # Enable Quick Run if a last run config exists
+        if app_settings.last_run_config:
+            quick_run_btn.disabled = False
         
         # Extract frequently used widgets for convenience
         config_field = common_fields["config_field"]
@@ -139,17 +155,43 @@ def main() -> None:
         # Buttons (need to be defined before handlers)
         run_btn = ft.ElevatedButton("Run", icon=ft.Icons.PLAY_ARROW)
         cancel_btn = ft.OutlinedButton("Cancel", icon=ft.Icons.CANCEL, disabled=True)
-        
+
+        # Build PresetFields and RecentFields typed groups
+        preset_fields_obj = PresetFields(**preset_fields_dict)
+        recent_fields_obj = RecentFields(
+            recent_input_dropdown=recent_input_dd,
+            recent_config_dropdown=recent_config_dd,
+        )
+
         # Initialize GuiWidgets using grouped field dataclasses
         widgets = GuiWidgets(
             common=CommonFields(**common_fields),
             image=ImageFields(**image_fields),
             template=TemplateFields(**template_fields),
-            ui=UiElements(**ui_elements, run_btn=run_btn, cancel_btn=cancel_btn),
+            ui=UiElements(
+                **ui_elements,
+                run_btn=run_btn,
+                cancel_btn=cancel_btn,
+                quick_run_btn=quick_run_btn,
+                recent=recent_fields_obj,
+            ),
             batch=BatchFields(**batch_fields),
+            preset=preset_fields_obj,
         )
         
         handlers = GuiHandlers(widgets, state, page, clipboard)
+
+        # A-2: helper to refresh a recent-files dropdown in-place
+        def _refresh_recent_dd(dropdown: Any, paths: list[str]) -> None:
+            """Rebuild a recent-files dropdown options list from the given paths."""
+            try:
+                dropdown.options = [ft.dropdown.Option(p) for p in paths]
+                try:
+                    dropdown.update()
+                except Exception:  # noqa: BLE001
+                    pass
+            except Exception:  # noqa: BLE001
+                pass
         
         # ============================================================== #
         #  FilePicker (Flet ≥ 0.80 Service API)                          #
@@ -171,6 +213,8 @@ def main() -> None:
                 app_settings.add_recent_config(str(files[0].path))
                 save_app_settings(app_settings)
                 handlers.on_config_change(None)  # UI反映 + 状態更新
+                # A-2: refresh recent config dropdown options
+                _refresh_recent_dd(recent_config_dd, app_settings.recent_configs)
                 handlers.flush()
 
         async def pick_input(_: ft.ControlEvent) -> None:
@@ -189,6 +233,8 @@ def main() -> None:
                 input_field.value = files[0].path
                 app_settings.add_recent_input(str(files[0].path))
                 save_app_settings(app_settings)
+                # A-2: refresh recent input dropdown options
+                _refresh_recent_dd(recent_input_dd, app_settings.recent_inputs)
                 handlers.auto_preview_if_enabled(None)  # 画像選択時に自動プレビュー
                 handlers.flush()
 
@@ -332,6 +378,20 @@ def main() -> None:
         for _cb in (draw_finish_field, draw_basic_field):
             _cb.on_change = make_blur_handler()
 
+        # A-1: Preset events
+        preset_fields_dict["dropdown"].on_change = handlers.on_load_preset
+        preset_fields_dict["save_btn"].on_click = handlers.on_save_preset
+        preset_fields_dict["delete_btn"].on_click = handlers.on_delete_preset
+        # Populate preset dropdown with saved presets on startup
+        handlers._refresh_preset_dropdown(app_settings)
+
+        # A-2: Recent file dropdown events
+        recent_input_dd.on_change = handlers.on_recent_input_select
+        recent_config_dd.on_change = handlers.on_recent_config_select
+
+        # A-3: Quick Run button event
+        quick_run_btn.on_click = handlers.on_quick_run
+
         # ============================================================== #
         #  ボタン                                                         #
         # ============================================================== #
@@ -369,10 +429,14 @@ def main() -> None:
             common_fields, pick_config,
             reset_config=handlers.on_reset_defaults,
             save_config=handlers.on_save_config,
+            preset_fields=preset_fields_obj,
+            recent_config_dropdown=recent_config_dd,
         )
         tab_image = builder.build_tab_image(
             image_fields, run_btn, cancel_btn, pick_input, pick_out_dir,
             open_output_folder=handlers.on_open_output_folder,
+            recent_input_dropdown=recent_input_dd,
+            quick_run_btn=quick_run_btn,
         )
         tab_template = builder.build_tab_template(
             template_fields, tmpl_btn, pick_template_out

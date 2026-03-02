@@ -38,6 +38,8 @@ from name_splitter.app.gui_types import (
     TemplateFields,
     UiElements,
     BatchFields,
+    PresetFields,
+    RecentFields,
     Page,
     Clipboard,
 )
@@ -51,6 +53,7 @@ from name_splitter.app.gui_utils import (
 from name_splitter.app.gui_handlers_config import GuiHandlersConfigMixin
 from name_splitter.app.gui_handlers_size import GuiHandlersSizeMixin
 from name_splitter.app.gui_handlers_batch import GuiHandlersBatchMixin
+from name_splitter.app.gui_handlers_preset import GuiHandlersPresetMixin
 from name_splitter.app.error_messages import get_ja_message
 
 
@@ -71,9 +74,15 @@ class GuiWidgets:
     template: TemplateFields
     ui: UiElements
     batch: "BatchFields | None" = None
+    preset: "PresetFields | None" = None
 
 
-class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin, GuiHandlersBatchMixin):
+class GuiHandlers(
+    GuiHandlersSizeMixin,
+    GuiHandlersConfigMixin,
+    GuiHandlersBatchMixin,
+    GuiHandlersPresetMixin,
+):
     """Event handlers and UI helper methods for CSP Name Splitter GUI.
 
     Why: Centralising all Flet event callbacks in one class (with mixin
@@ -375,6 +384,8 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin, GuiHandlersBatch
             self.set_status("Done")
             self.w.ui.progress_bar.color = "green"
             self._auto_open_output(out)
+            # A-3: persist last run config so Quick Run can repeat it
+            self._save_last_run_config()
             self.flush_from_thread()
         except (ConfigError, LimitExceededError, ImageReadError, ValueError, RuntimeError) as exc:
             self.add_error_log(str(exc))
@@ -492,6 +503,118 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin, GuiHandlersBatch
         self.state.request_cancel()
         self.set_status("Cancel requested")
         self.flush()
+
+    # ------------------------------------------------------------------ #
+    # A-2: Recent file handlers                                           #
+    # ------------------------------------------------------------------ #
+
+    def on_recent_input_select(self, e: Any) -> None:
+        """Handle recent input dropdown selection — populate the input field.
+
+        Why: Letting users re-open a recently used image from a dropdown
+             is faster than navigating the file picker each time.
+        How: Reads the selected path from the recent dropdown value and
+             writes it to the input_field, then triggers auto-preview.
+
+        Args:
+            e: Flet ControlEvent from the dropdown's on_change callback.
+        """
+        if self.w.ui.recent is None:
+            return
+        path = self.w.ui.recent.recent_input_dropdown.value
+        if not path:
+            return
+        self.w.image.input_field.value = path
+        self.auto_preview_if_enabled(e)
+        self.flush()
+
+    def on_recent_config_select(self, e: Any) -> None:
+        """Handle recent config dropdown selection — load and apply the config.
+
+        Why: Re-loading a recently used config file from a dropdown is
+             faster and less error-prone than retyping the full path.
+        How: Sets config_field to the selected path and delegates to
+             on_config_change which reads, parses, and applies the file.
+
+        Args:
+            e: Flet ControlEvent from the dropdown's on_change callback.
+        """
+        if self.w.ui.recent is None:
+            return
+        path = self.w.ui.recent.recent_config_dropdown.value
+        if not path:
+            return
+        self.w.common.config_field.value = path
+        self.on_config_change(e)
+
+    # ------------------------------------------------------------------ #
+    # A-3: Quick Run                                                       #
+    # ------------------------------------------------------------------ #
+
+    def on_quick_run(self, _: Any) -> None:
+        """Handle Quick Run button click — restore last run config and execute.
+
+        Why: Iterative workflows (tweak settings → run → inspect → tweak)
+             require re-running the same image with minor config changes.
+             Quick Run skips re-entering common fields.
+        How: Loads last_run_config from AppSettings, applies it to the UI
+             via _apply_preset_dict_to_ui (reusing the preset mixin logic),
+             then delegates to on_run to start the background job.
+        """
+        try:
+            from name_splitter.app.app_settings import load_app_settings  # noqa: PLC0415
+            settings = load_app_settings()
+            cfg_dict = settings.last_run_config
+            if not cfg_dict:
+                self.add_error_log("No previous run found. Run a job first.")
+                self.flush()
+                return
+            self._apply_preset_dict_to_ui(cfg_dict)
+            # Restore input path if saved
+            input_d = cfg_dict.get("input", {})
+            if isinstance(input_d, dict) and input_d.get("image_path"):
+                self.w.image.input_field.value = str(input_d["image_path"])
+            output_d = cfg_dict.get("output", {})
+            if isinstance(output_d, dict) and output_d.get("out_dir"):
+                self.w.image.out_dir_field.value = str(output_d["out_dir"])
+        except Exception as exc:  # noqa: BLE001
+            self.add_error_log(f"Quick Run restore: {exc}")
+            self.flush()
+            return
+        self.on_run(None)
+
+    def _save_last_run_config(self) -> None:
+        """Persist the current UI configuration as last_run_config in AppSettings.
+
+        Why: Quick Run needs to know the exact field values from the most
+             recent successful execution, including the input image path and
+             output directory.
+        How: Builds a config dict from current UI values (reusing the preset
+             config builder with additional input/output keys), then saves
+             to AppSettings.last_run_config. Also enables the quick_run_btn
+             so the user can see it is now usable.
+        """
+        try:
+            from name_splitter.app.app_settings import (  # noqa: PLC0415
+                load_app_settings,
+                save_app_settings,
+            )
+            settings = load_app_settings()
+            # Build a full run config dict (superset of preset dict)
+            cfg_dict = self._build_preset_config_dict()
+            cfg_dict["input"] = {
+                "image_path": (self.w.image.input_field.value or "").strip(),
+            }
+            out_dir = (self.w.image.out_dir_field.value or "").strip()
+            if isinstance(cfg_dict.get("output"), dict):
+                cfg_dict["output"]["out_dir"] = out_dir  # type: ignore[index]
+            settings.last_run_config = cfg_dict
+            save_app_settings(settings)
+            # Enable Quick Run button now that a run config exists
+            if self.w.ui.quick_run_btn is not None:
+                self.w.ui.quick_run_btn.disabled = False
+        except Exception:  # noqa: BLE001
+            pass  # Why: Failure to persist last run config must never crash the app
 
     def _run_template(self) -> None:
         """Generate a template PNG in a background thread.

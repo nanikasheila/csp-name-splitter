@@ -44,6 +44,7 @@ class AppSettings:
          file I/O logic.
     How: Plain dataclass with default values matching the first-launch
          experience. add_recent_* methods manage bounded FIFO lists.
+         preset_* methods manage named configuration snapshots.
     """
 
     window_width: int = 1200
@@ -53,6 +54,8 @@ class AppSettings:
     recent_inputs: list[str] = field(default_factory=list)
     auto_open_output: bool = True
     first_run: bool = True
+    presets: list[dict[str, object]] = field(default_factory=list)
+    last_run_config: dict[str, object] | None = None
 
     def add_recent_config(self, path: str) -> None:
         """Record a config file path, keeping most-recent first.
@@ -75,6 +78,64 @@ class AppSettings:
             self.recent_inputs.remove(path)
         self.recent_inputs.insert(0, path)
         self.recent_inputs = self.recent_inputs[:_MAX_RECENT_ENTRIES]
+
+    def save_preset(self, name: str, config_dict: dict) -> None:
+        """Add or overwrite a named preset with the given configuration dict.
+
+        Why: Users repeatedly switch between a small set of configurations;
+             presets eliminate re-entering all fields each time.
+        How: Removes any existing preset with the same name (case-sensitive),
+             then appends the new entry so the list stays ordered by insertion.
+
+        Args:
+            name: Human-readable preset name (must be non-empty).
+            config_dict: Serialisable dict representing the UI configuration.
+        """
+        self.presets = [p for p in self.presets if p.get("name") != name]
+        self.presets.append({"name": name, "config": config_dict})
+
+    def delete_preset(self, name: str) -> None:
+        """Remove the preset with the given name, if it exists.
+
+        Why: Stale presets clutter the dropdown; deletion keeps the list
+             manageable without requiring an app restart.
+        How: Filters out any entry whose "name" key matches; no-op if absent.
+
+        Args:
+            name: Preset name to remove.
+        """
+        self.presets = [p for p in self.presets if p.get("name") != name]
+
+    def get_preset_names(self) -> list[str]:
+        """Return the ordered list of saved preset names.
+
+        Why: The preset dropdown needs the current name list every time it
+             is rebuilt (save, delete, initial load).
+        How: Extracts the "name" key from each preset entry in list order.
+
+        Returns:
+            List of preset name strings; empty if no presets have been saved.
+        """
+        return [str(p["name"]) for p in self.presets if "name" in p]
+
+    def get_preset(self, name: str) -> dict | None:
+        """Return the config dict for the named preset, or None if not found.
+
+        Why: The load-preset handler needs the config dict to apply field
+             values to the UI without hitting the filesystem.
+        How: Linear scan — preset count is small enough to make this trivial.
+
+        Args:
+            name: Preset name to look up.
+
+        Returns:
+            Config dict stored under the preset name, or None if not found.
+        """
+        for p in self.presets:
+            if p.get("name") == name:
+                cfg = p.get("config")
+                return dict(cfg) if isinstance(cfg, dict) else None
+        return None
 
 
 def load_app_settings() -> AppSettings:
