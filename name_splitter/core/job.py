@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -15,11 +16,18 @@ from .render import RenderPlan, RenderedPage, render_pages, write_plan
 
 @dataclass(frozen=True)
 class ProgressEvent:
-    # 進捗通知のイベント
+    """Progress notification event.
+
+    Why: GUI and CLI need real-time feedback during job execution.
+    How: Frozen dataclass with timing fields for speed/ETA display.
+    """
     phase: str
     done: int
     total: int
     message: str = ""
+    elapsed_seconds: float = 0.0
+    pages_per_second: float = 0.0
+    eta_seconds: float | None = None
 
 
 class CancelToken:
@@ -39,11 +47,16 @@ class CancelToken:
 
 @dataclass(frozen=True)
 class JobResult:
-    # ジョブ実行結果
+    """Job execution result.
+
+    Why: Callers need output metadata for result reports and logging.
+    How: Frozen dataclass with elapsed_seconds for processing time display.
+    """
     out_dir: Path
     page_count: int
     plan: RenderPlan
     pdf_path: Path | None = None
+    elapsed_seconds: float = 0.0
 
 
 def run_job(
@@ -56,10 +69,28 @@ def run_job(
     cancel_token: CancelToken | None = None,
 ) -> JobResult:
     # 画像読み込みからレンダリングまでの一連処理
+    _job_start = time.monotonic()
+
     def report(phase: str, done: int, total: int, message: str = "") -> None:
-        # 進捗コールバック通知
+        """Progress callback with timing data.
+
+        Why: GUI needs speed/ETA for user feedback during render_pages.
+        How: Computes elapsed, speed, and ETA from monotonic clock.
+        """
+        elapsed = time.monotonic() - _job_start
+        speed = 0.0
+        eta: float | None = None
+        if phase == "render_pages" and done > 0 and elapsed > 0.001:
+            speed = done / max(elapsed, 0.001)
+            remaining = total - done
+            eta = remaining / speed if speed > 0 and remaining > 0 else 0.0
         if on_progress:
-            on_progress(ProgressEvent(phase=phase, done=done, total=total, message=message))
+            on_progress(ProgressEvent(
+                phase=phase, done=done, total=total, message=message,
+                elapsed_seconds=elapsed,
+                pages_per_second=speed,
+                eta_seconds=eta,
+            ))
 
     def check_cancel() -> None:
         # キャンセルされていれば中断
@@ -138,7 +169,11 @@ def run_job(
         report("export_pdf", 1, 1, f"PDF exported: {resolved_pdf} ({pdf_size:,} bytes)")
         check_cancel()
 
-    return JobResult(out_dir=output_dir, page_count=len(selected_pages), plan=plan, pdf_path=pdf_path)
+    elapsed = time.monotonic() - _job_start
+    return JobResult(
+        out_dir=output_dir, page_count=len(selected_pages),
+        plan=plan, pdf_path=pdf_path, elapsed_seconds=elapsed,
+    )
 
 
 def _select_pages(

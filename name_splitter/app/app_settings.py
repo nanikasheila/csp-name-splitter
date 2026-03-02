@@ -54,6 +54,7 @@ class AppSettings:
     recent_inputs: list[str] = field(default_factory=list)
     auto_open_output: bool = True
     first_run: bool = True
+    log_to_file: bool = False
     presets: list[dict[str, object]] = field(default_factory=list)
     last_run_config: dict[str, object] | None = None
 
