@@ -60,6 +60,10 @@ class OutputConfig:
     raster_ext: str = "png"
     container: str = "png"
     layout: str = "layers"
+    output_dpi: int = 0  # 0 = no resize; positive = resize to target DPI
+    page_number_start: int = 1
+    skip_pages: tuple[int, ...] = ()  # 1-based physical page indices to skip
+    odd_even: str = "all"  # "all", "odd", "even"
 
 
 @dataclass(frozen=True)
@@ -186,6 +190,10 @@ def load_config(path: str | Path) -> Config:
             raster_ext=str(output_section.get("raster_ext", "png")),
             container=str(output_section.get("container", "png")),
             layout=str(output_section.get("layout", "layers")),
+            output_dpi=int(output_section.get("output_dpi", 0)),
+            page_number_start=int(output_section.get("page_number_start", 1)),
+            skip_pages=tuple(int(p) for p in output_section.get("skip_pages", ())),
+            odd_even=str(output_section.get("odd_even", "all")),
         ),
         limits=LimitsConfig(
             max_dim_px=int(limits_section.get("max_dim_px", 30000)),
@@ -228,3 +236,9 @@ def validate_config(cfg: Config) -> None:
         raise ConfigError(f"output.layout must be one of {sorted(ALLOWED_OUTPUT_LAYOUTS)}")
     if cfg.output.container not in ALLOWED_CONTAINERS:
         raise ConfigError(f"output.container must be one of {sorted(ALLOWED_CONTAINERS)}")
+    if cfg.output.output_dpi < 0:
+        raise ConfigError("output.output_dpi must be >= 0 (0 = no resize)")
+    if cfg.output.page_number_start < 1:
+        raise ConfigError("output.page_number_start must be >= 1")
+    if cfg.output.odd_even not in {"all", "odd", "even"}:
+        raise ConfigError("output.odd_even must be 'all', 'odd', or 'even'")

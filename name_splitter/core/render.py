@@ -76,6 +76,10 @@ def write_plan(
             "raster_ext": cfg.output.raster_ext,
             "container": cfg.output.container,
             "layout": cfg.output.layout,
+            "output_dpi": cfg.output.output_dpi,
+            "page_number_start": cfg.output.page_number_start,
+            "skip_pages": list(cfg.output.skip_pages),
+            "odd_even": cfg.output.odd_even,
         },
         "merge": _serialize_merge(merge_result),
         "pages": page_entries,
@@ -105,9 +109,18 @@ def render_pages(
     out_dir.mkdir(parents=True, exist_ok=True)
     pages: list[RenderedPage] = []
     total_pages = len(selected_pages)
+    # Why: output_dpi controls post-crop resize; 0 means no resize.
+    output_dpi = cfg.output.output_dpi
+    source_dpi = cfg.grid.dpi
+    do_resize = output_dpi > 0 and output_dpi != source_dpi
+    # Why: page_number_start allows custom numbering (e.g., start from 3).
+    page_number_offset = cfg.output.page_number_start - 1
+    target_dpi = output_dpi if output_dpi > 0 else source_dpi
+
     for index, page_index in enumerate(selected_pages, start=1):
         cell = cells[page_index]
-        page_name = cfg.output.page_basename.format(page=page_index + 1)
+        display_number = index + page_number_offset
+        page_name = cfg.output.page_basename.format(page=display_number)
         page_dir = out_dir / page_name
         layer_paths: dict[str, Path] = {}
         for layer_name in cfg.output.layer_stack:
@@ -116,6 +129,11 @@ def render_pages(
                 # 指定レイヤーがない場合は透明で埋める
                 image = ImageData.blank(image_info.width, image_info.height)
             cropped = image.crop(cell.x0, cell.y0, cell.x1, cell.y1)
+            if do_resize:
+                scale = output_dpi / source_dpi
+                new_w = max(1, round(cropped.width * scale))
+                new_h = max(1, round(cropped.height * scale))
+                cropped = cropped.resize(new_w, new_h)
             if cfg.output.layout == "layers":
                 layer_dir = out_dir / layer_name
                 layer_dir.mkdir(parents=True, exist_ok=True)
@@ -123,7 +141,7 @@ def render_pages(
             else:
                 page_dir.mkdir(parents=True, exist_ok=True)
                 path = page_dir / f"{layer_name}.{cfg.output.raster_ext}"
-            cropped.save(path)
+            cropped.save(path, dpi=target_dpi)
             layer_paths[layer_name] = path
         rendered = RenderedPage(page_index=page_index, page_dir=page_dir, layer_paths=layer_paths)
         pages.append(rendered)
