@@ -382,5 +382,81 @@ class WidgetBuilder(WidgetLayoutMixin):
 
         return fields
 
+    def create_preset_fields(self) -> dict[str, Any]:
+        """Create preset management widgets: dropdown, save button, delete button.
+
+        Why: Presets require three co-located controls. Centralising their
+             creation here keeps gui.py and the layout mixin free of widget
+             instantiation details.
+        How: Returns a dict with 'dropdown', 'save_btn', and 'delete_btn'
+             keyed by the PresetFields field names.
+
+        Returns:
+            Dictionary with preset widget references keyed by field name.
+        """
+        ft = self.ft
+
+        fields: dict[str, Any] = {}
+        fields["dropdown"] = ft.Dropdown(
+            label="プリセット",
+            options=[],
+            width=220,
+            hint_text="保存済みプリセットを選択",
+        )
+        fields["save_btn"] = ft.ElevatedButton(
+            "Save",
+            icon=ft.Icons.BOOKMARK_ADD,
+            tooltip="現在の設定をプリセットとして保存",
+        )
+        fields["delete_btn"] = ft.OutlinedButton(
+            "Delete",
+            icon=ft.Icons.DELETE_OUTLINE,
+            tooltip="選択中のプリセットを削除",
+        )
+        return fields
+
+    def create_recent_dropdown(self, label: str, options: list[str]) -> Any:
+        """Create a dropdown widget pre-populated with recently used file paths.
+
+        Why: Letting users re-open a recently used file from a dropdown is
+             faster than navigating the file picker again.
+        How: Creates a Dropdown with ft.dropdown.Option entries for each
+             path string; the dropdown has a fixed width to stay compact.
+
+        Args:
+            label: Human-readable label shown above the dropdown.
+            options: List of recent file path strings, most-recent first.
+
+        Returns:
+            ft.Dropdown widget ready to be placed in a layout.
+        """
+        ft = self.ft
+        return ft.Dropdown(
+            label=label,
+            options=[ft.dropdown.Option(p) for p in options],
+            width=300,
+            hint_text="最近使ったファイル",
+        )
+
+    def create_quick_run_button(self) -> Any:
+        """Create the Quick Run button that repeats the last successful run.
+
+        Why: Users processing the same image repeatedly (iterative tuning)
+             should be able to re-run with a single click rather than
+             re-entering paths and settings.
+        How: Returns an ElevatedButton styled with a REPLAY icon; the
+             on_click handler is wired in gui.py.
+
+        Returns:
+            ft.ElevatedButton widget for Quick Run.
+        """
+        ft = self.ft
+        return ft.ElevatedButton(
+            "Quick Run",
+            icon=ft.Icons.REPLAY,
+            tooltip="前回の設定で再実行",
+            disabled=True,
+        )
+
 
 __all__ = ["WidgetBuilder", "TRANSPARENT_PNG_BASE64"]
