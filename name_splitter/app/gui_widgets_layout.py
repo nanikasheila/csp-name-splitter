@@ -286,6 +286,19 @@ class WidgetLayoutMixin:
                 ft.Text("Output", weight=ft.FontWeight.BOLD, size=12),
             ], spacing=4),
             ft.Row([fields["output_format_field"]]),
+            # B-1: Output DPI control
+            ft.Row([fields["output_dpi_field"]], spacing=6),
+            ft.Divider(height=2),
+            # B-2: Page number customization
+            ft.Row([
+                ft.Icon(ft.Icons.FORMAT_LIST_NUMBERED, size=16),
+                ft.Text("ページ番号設定", weight=ft.FontWeight.BOLD, size=12),
+            ], spacing=4),
+            ft.Row([
+                fields["page_number_start_field"],
+                fields["skip_pages_field"],
+                fields["odd_even_field"],
+            ], spacing=6),
             ft.Divider(height=2),
         ]
 

@@ -205,9 +205,37 @@ class WidgetBuilder(WidgetLayoutMixin):
             width=180,
             tooltip="PNG: 個別画像ファイル\nPDF: 1つのPDFにまとめて出力",
         )
+        fields["output_dpi_field"] = ft.TextField(
+            label="出力DPI (0=リサイズなし)",
+            value="0",
+            width=180,
+            tooltip="分割後のページを指定DPIにリサイズ（例: 350）。0で無効。",
+        )
+        fields["page_number_start_field"] = ft.TextField(
+            label="開始ページ番号",
+            value="1",
+            width=140,
+            tooltip="出力ファイル名の開始番号（例: 3で page_003 から開始）",
+        )
+        fields["skip_pages_field"] = ft.TextField(
+            label="スキップページ (カンマ区切り)",
+            value="",
+            width=200,
+            tooltip="出力しないページ番号（例: 1,2 で表紙と裏表紙をスキップ）",
+        )
+        fields["odd_even_field"] = ft.Dropdown(
+            label="出力ページ",
+            options=[
+                ft.dropdown.Option(key="all", text="全ページ"),
+                ft.dropdown.Option(key="odd", text="奇数ページのみ"),
+                ft.dropdown.Option(key="even", text="偶数ページのみ"),
+            ],
+            value="all",
+            width=160,
+        )
         
         return fields
-    
+
     def create_template_fields(self) -> dict[str, Any]:
         """Create Template tab fields (Finish, Basic, Grid visual).
         
