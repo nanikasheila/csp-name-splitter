@@ -1,7 +1,7 @@
 # CSP Name Splitter - アーキテクチャドキュメント
 
 **最終更新**: 2026年2月10日  
-**バージョン**: Phase 8完了版
+**バージョン**: v1.0.0（製品化対応版）
 
 ---
 
@@ -74,15 +74,24 @@ CSP Name Splitterは、レイヤー分離とMVCパターンに基づいた設計
 
 ### モジュール構成 (Phase 6完了後)
 
-GUIは5つの専門モジュールに分割されています:
+GUIは6つの専門モジュール＋補助モジュール群に分割されています:
 
 ```
 name_splitter/app/
-├── gui.py              # エントリーポイント・UI構築 (388行)
-├── gui_handlers.py     # イベントハンドラ・ロジック (668行)
-├── gui_types.py        # 型定義・Protocol (197行)
-├── gui_state.py        # 状態管理 (既存)
-└── gui_utils.py        # ユーティリティ関数 (既存)
+├── gui.py                  # エントリーポイント・UI構築 (388行)
+├── gui_handlers.py         # イベントハンドラ統合クラス (Mixin パターン)
+├── gui_handlers_batch.py   # バッチ処理 GUI Mixin（新規）
+├── gui_handlers_config.py  # コンフィグ読み込み・UI反映 Mixin
+├── gui_handlers_size.py    # ページ/キャンバスサイズ計算 Mixin
+├── gui_types.py            # 型定義・Protocol (197行)
+├── gui_state.py            # 状態管理
+├── gui_utils.py            # ユーティリティ関数
+├── gui_widgets.py          # ウィジェット生成統合クラス
+├── gui_widgets_layout.py   # レイアウト構築 Mixin
+├── app_settings.py         # 設定永続化（ウィンドウサイズ・テーマ等）
+├── error_messages.py       # GUIエラーメッセージ日本語化辞書（新規）
+├── main.py                 # パッケージ配布用エントリーポイント（新規）
+└── cli.py                  # CLI エントリーポイント
 ```
 
 ### 1. gui.py - エントリーポイント
@@ -503,10 +512,38 @@ def apply_config_to_ui(self, cfg):
   - 4つのデータクラス (フィールドグループ)
   - 1つのデータクラス (GuiWidgets)
 
-#### `gui_state.py`
-- **責務**: GUI状態管理
-- **依存**: `core/errors.py` (CancelToken)
-- **主要クラス**: `GuiState`, `UnitState`
+#### `gui_handlers_batch.py`
+- **責務**: バッチ処理 GUI Mixin（フォルダスキャン・複数ジョブのオーケストレーション・進捗管理）
+- **依存**: `core/batch.py`, `core/errors.py`
+- **パターン**: 純粋 Mixin（`__init__` なし）、`GuiHandlers` が継承
+- **Batch タブ**: GUI に 5 タブ目（Batch）を追加
+
+#### `error_messages.py`
+- **責務**: 英語エラー文字列 → 日本語メッセージのマッピング辞書
+- **依存**: なし（純粋データモジュール）
+- **設計方針**: `raise` サイトの英語メッセージは維持し、GUI 表示時のみ日本語変換を適用。既存テストの `match=` アサーションへの影響をゼロに保つ
+
+#### `main.py`
+- **責務**: パッケージ配布用エントリーポイント（exe 化対応）
+- **依存**: `gui.py`
+- **設計方針**: `flet pack` / PyInstaller が要求する明示的な `main.py` ラッパー
+
+#### `app_settings.py`
+- **責務**: アプリケーション設定の永続化（起動間でウィンドウサイズ・テーマ・最近使ったファイルを保持）
+- **依存**: なし（標準ライブラリのみ）
+- **保存先**: Windows `%APPDATA%\csp-name-splitter\`、その他 `~/.config/csp-name-splitter\`
+
+**主要フィールド** (`AppSettings` dataclass):
+
+| フィールド | 型 | デフォルト | 説明 |
+|---|---|---|---|
+| `window_width` | `int` | `1200` | ウィンドウ幅 |
+| `window_height` | `int` | `850` | ウィンドウ高さ |
+| `theme_mode` | `str` | `"light"` | テーマモード |
+| `recent_configs` | `list[str]` | `[]` | 最近使った設定ファイル（最大5件） |
+| `recent_inputs` | `list[str]` | `[]` | 最近使った入力画像（最大5件） |
+| `auto_open_output` | `bool` | `True` | 処理完了後に出力フォルダを自動で開く |
+| `first_run` | `bool` | `True` | 初回起動判定（ガイダンス表示に使用） |
 
 #### `gui_utils.py`
 - **責務**: GUI用ユーティリティ関数
@@ -737,9 +774,28 @@ gui_utils.py:    既存
 - テストカバレッジ維持
 - メンテナンス性大幅向上
 
+### Phase 9: 製品化対応 ✅
+**目標**: Windows 配布用 exe 対応・バッチ処理・UX 改善
+
+**実施内容**:
+
+1. **`main.py` 追加**: flet pack / PyInstaller 向け明示的エントリーポイント
+2. **`error_messages.py` 追加**: GUI 向けエラーメッセージ日本語化辞書
+3. **`gui_handlers_batch.py` 追加**: バッチ処理 GUI Mixin（Batch タブ実装）
+4. **`app_settings.py` 新フィールド追加**:
+   - `auto_open_output: bool = True` — 完了後の自動フォルダオープン
+   - `first_run: bool = True` — 初回起動ガイダンス制御
+5. **GUI タブ拡張**: 4 タブ → 5 タブ（Batch タブ追加）
+
+**成果**:
+- Python 不要のスタンドアロン exe を配布可能
+- フォルダ単位の一括処理に対応
+- エラーメッセージが日本語で表示され、ユーザビリティ向上
+- 初回起動時のガイダンスで導入障壁を低減
+
 ---
 
-## コード品質メトリクス
+
 
 ### リファクタリング前後の比較
 

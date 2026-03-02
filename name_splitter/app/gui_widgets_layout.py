@@ -340,5 +340,76 @@ class WidgetLayoutMixin:
             padding=ft.Padding(8, 6, 8, 6),
         )
 
+    def build_tab_batch(
+        self,
+        fields: dict,
+        pick_batch_dir: Callable,
+        pick_batch_out_dir: Callable,
+    ) -> object:
+        """Build the Batch Processing tab layout.
+
+        Why: Batch processing needs its own tab so users can process entire
+             directories without configuring each image individually.
+        How: Assembles a simple column with directory pickers, a recursive
+             checkbox, run/cancel buttons, and a per-job progress text widget.
+             All in a scrollable, padded Container matching other tab styles.
+
+        Args:
+            fields: Dict of batch field widgets keyed by field name
+            pick_batch_dir: Callback to open input directory picker
+            pick_batch_out_dir: Callback to open output directory picker
+
+        Returns:
+            ft.Container with the Batch tab layout
+        """
+        ft = self.ft
+
+        return ft.Container(
+            content=ft.Column([
+                # Input directory row
+                ft.Row([
+                    ft.Icon(ft.Icons.FOLDER_OPEN, size=16),
+                    ft.Text("入力ディレクトリ", weight=ft.FontWeight.BOLD, size=12),
+                ], spacing=4),
+                ft.Row([
+                    fields["batch_dir_field"],
+                    ft.IconButton(
+                        icon=ft.Icons.FOLDER,
+                        tooltip="入力ディレクトリを選択",
+                        on_click=pick_batch_dir,
+                    ),
+                ]),
+                ft.Divider(height=2),
+                # Output directory row
+                ft.Row([
+                    ft.Icon(ft.Icons.OUTPUT, size=16),
+                    ft.Text("出力ディレクトリ", weight=ft.FontWeight.BOLD, size=12),
+                ], spacing=4),
+                ft.Row([
+                    fields["batch_out_dir_field"],
+                    ft.IconButton(
+                        icon=ft.Icons.FOLDER,
+                        tooltip="出力ディレクトリを選択",
+                        on_click=pick_batch_out_dir,
+                    ),
+                ]),
+                ft.Divider(height=2),
+                # Options
+                ft.Row([fields["batch_recursive_field"]]),
+                ft.Divider(height=2),
+                # Run / Cancel
+                ft.Row([
+                    fields["batch_run_btn"],
+                    fields["batch_cancel_btn"],
+                ], spacing=8),
+                # Progress display
+                ft.Row([
+                    ft.Icon(ft.Icons.INFO_OUTLINE, size=14, color=ft.Colors.OUTLINE),
+                    fields["batch_status_text"],
+                ], spacing=4),
+            ], spacing=8, scroll=ft.ScrollMode.AUTO),
+            padding=ft.Padding(8, 6, 8, 6),
+        )
+
 
 __all__ = ["WidgetLayoutMixin"]
