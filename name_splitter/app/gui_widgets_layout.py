@@ -43,6 +43,9 @@ class WidgetLayoutMixin:
         save_config: Callable | None = None,
         preset_fields: Any = None,
         recent_config_dropdown: Any = None,
+        export_config: Callable | None = None,
+        import_config: Callable | None = None,
+        log_file_toggle: Any = None,
     ) -> object:
         """Build the Config tab content (config file, page size, grid, margins).
 
@@ -194,6 +197,39 @@ class WidgetLayoutMixin:
                     preset_fields.save_btn,
                     preset_fields.delete_btn,
                 ], wrap=True, spacing=6),
+            ]
+
+        # C-2: Settings import/export
+        if export_config is not None or import_config is not None:
+            ie_row: list[Any] = []
+            if import_config is not None:
+                ie_row.append(ft.ElevatedButton(
+                    "インポート", icon=ft.Icons.FILE_UPLOAD,
+                    on_click=import_config,
+                ))
+            if export_config is not None:
+                ie_row.append(ft.ElevatedButton(
+                    "エクスポート", icon=ft.Icons.FILE_DOWNLOAD,
+                    on_click=export_config,
+                ))
+            col_items += [
+                ft.Divider(height=2),
+                ft.Row([
+                    ft.Icon(ft.Icons.SWAP_HORIZ, size=16),
+                    ft.Text("設定の共有", weight=ft.FontWeight.BOLD, size=12),
+                ], spacing=4),
+                ft.Row(ie_row, spacing=6),
+            ]
+
+        # C-3: Log file toggle
+        if log_file_toggle is not None:
+            col_items += [
+                ft.Divider(height=2),
+                ft.Row([
+                    ft.Icon(ft.Icons.TEXT_SNIPPET, size=16),
+                    ft.Text("ログ設定", weight=ft.FontWeight.BOLD, size=12),
+                ], spacing=4),
+                ft.Row([log_file_toggle], spacing=4),
             ]
 
         return ft.Container(

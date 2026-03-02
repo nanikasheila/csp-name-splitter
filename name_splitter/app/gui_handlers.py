@@ -385,9 +385,15 @@ class GuiHandlers(
             self.flush()
 
             def on_progress(ev: Any) -> None:
+                # C-1: Enhanced progress with speed/ETA during render_pages
                 self.set_progress(ev.done, ev.total)
                 pct = int(ev.done / ev.total * 100) if ev.total else 0
-                self.set_status(f"{ev.phase} {ev.done}/{ev.total} ({pct}%)")
+                parts = [f"{ev.phase} {ev.done}/{ev.total} ({pct}%)"]
+                if ev.pages_per_second > 0:
+                    parts.append(f"{ev.pages_per_second:.1f}p/s")
+                if ev.eta_seconds is not None and ev.eta_seconds > 0:
+                    parts.append(f"残り{ev.eta_seconds:.0f}秒")
+                self.set_status(" ".join(parts))
                 self.add_log(f"[{ev.phase}] {ev.done}/{ev.total} {ev.message}".strip())
                 self.flush_from_thread()
 
@@ -398,13 +404,28 @@ class GuiHandlers(
                 on_progress=on_progress,
                 cancel_token=self.state.cancel_token,
             )
+            # D-1: Result report
+            self.add_log("--- 処理結果 ---")
             self.add_log(f"Plan written to {result.plan.manifest_path}")
-            self.add_log(f"Pages: {result.page_count}")
+            self.add_log(f"ページ数: {result.page_count}")
+            self.add_log(f"処理時間: {result.elapsed_seconds:.1f}秒")
+            try:
+                total_bytes = sum(
+                    p.stat().st_size for p in result.out_dir.rglob("*") if p.is_file()
+                )
+                if total_bytes >= 1_048_576:
+                    self.add_log(f"総ファイルサイズ: {total_bytes / 1_048_576:.1f} MB")
+                else:
+                    self.add_log(f"総ファイルサイズ: {total_bytes / 1024:.1f} KB")
+            except OSError:
+                pass
             if result.pdf_path:
                 resolved = result.pdf_path.resolve()
                 size_kb = resolved.stat().st_size / 1024
                 self.add_log(f"PDF exported: {resolved} ({size_kb:.1f} KB)")
                 self.show_success(f"PDF exported: {resolved.name} ({size_kb:.1f} KB)")
+            self.add_log(f"出力先: {result.out_dir.resolve()}")
+            self.add_log("--- ---")
             self.set_status("Done")
             self.w.ui.progress_bar.color = "green"
             self._auto_open_output(out)
@@ -785,6 +806,10 @@ class GuiHandlers(
                     "raster_ext": "png",
                     "container": output_format,
                     "layout": "layers",
+                    "output_dpi": int(self.w.image.output_dpi_field.value or "0") if hasattr(self.w.image, "output_dpi_field") else 0,
+                    "page_number_start": int(self.w.image.page_number_start_field.value or "1") if hasattr(self.w.image, "page_number_start_field") else 1,
+                    "skip_pages": [int(s.strip()) for s in (self.w.image.skip_pages_field.value or "").split(",") if s.strip().isdigit()] if hasattr(self.w.image, "skip_pages_field") else [],
+                    "odd_even": (self.w.image.odd_even_field.value or "all").strip() if hasattr(self.w.image, "odd_even_field") else "all",
                 },
                 "limits": {
                     "max_dim_px": 30000,

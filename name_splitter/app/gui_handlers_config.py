@@ -37,8 +37,12 @@ class GuiHandlersConfigMixin:
 
         def update_size_info(self, _: Any = None) -> None: ...
         def add_log(self, msg: str) -> None: ...
+        def add_error_log(self, msg: str) -> None: ...
         def set_status(self, msg: str) -> None: ...
+        def show_error(self, msg: str) -> None: ...
+        def show_success(self, msg: str) -> None: ...
         def flush(self) -> None: ...
+        def on_save_config(self, _: Any) -> None: ...
 
     # ------------------------------------------------------------------
     # Config loading
@@ -239,6 +243,41 @@ class GuiHandlersConfigMixin:
         except Exception as exc:  # noqa: BLE001
             self.add_log(f"Config load error: {exc}")
             self.set_status("Config error")
+        self.flush()
+
+    def on_export_config(self, _: Any) -> None:
+        """C-2: Export current GUI settings to a new YAML file.
+
+        Why: Users need to share their configuration with others
+             (e.g., assistants or collaborators).
+        How: Reuses on_save_config but prompts for path via the
+             config_field if empty, or saves to the current path.
+        """
+        self.on_save_config(_)
+
+    def on_import_config(self, _: Any) -> None:
+        """C-2: Import settings from a YAML/JSON file.
+
+        Why: Users receive config files from others and need to
+             apply them to their GUI.
+        How: Reads config_field path, loads via load_config_for_ui,
+             and applies to UI. Same as on_config_change but explicit.
+        """
+        config_path = (self.w.common.config_field.value or "").strip()
+        if not config_path:
+            self.add_error_log("Config file path is empty. Pick or enter a config file.")
+            self.show_error("Config file path is empty.")
+            self.flush()
+            return
+        try:
+            msg, cfg = self.load_config_for_ui()
+            self.apply_config_to_ui(cfg)
+            self.add_log(f"Config imported from {config_path}")
+            self.set_status("Config imported")
+            self.show_success(f"Config imported from {config_path}")
+        except Exception as exc:  # noqa: BLE001
+            self.add_error_log(f"Import config: {exc}")
+            self.show_error(str(exc))
         self.flush()
 
 
