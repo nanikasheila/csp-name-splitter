@@ -27,7 +27,7 @@ class ImageData:
         # PIL画像をRGBAのImageDataに変換
         try:
             converted = image.convert("RGBA")
-        except Exception as exc:  # noqa: BLE001
+        except (OSError, ValueError, AttributeError) as exc:
             raise ImageReadError("Failed to convert image to RGBA") from exc
         width, height = converted.size
         data = list(converted.getdata())
