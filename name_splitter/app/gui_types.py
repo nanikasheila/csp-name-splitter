@@ -201,3 +201,25 @@ class UiElements:
     preview_loading_ring: Any  # ProgressRing shown during preview generation
     run_btn: Button
     cancel_btn: Button
+
+
+@dataclass
+class BatchFields:
+    """Batch processing tab fields.
+
+    Why: Batch processing has its own set of UI controls (directory pickers,
+         recursive flag, dedicated run/cancel, status) that are logically
+         separate from single-image ImageFields.
+    How: Plain dataclass grouping all batch-specific widget references so
+         GuiHandlersBatchMixin can access them via self.w.batch.
+    """
+
+    batch_dir_field: TextField
+    batch_out_dir_field: TextField
+    batch_recursive_field: Checkbox
+    batch_run_btn: Button
+    batch_cancel_btn: Button
+    batch_status_text: Text
+
+
+__all__ = ["CommonFields", "ImageFields", "TemplateFields", "UiElements", "BatchFields"]

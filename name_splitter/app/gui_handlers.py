@@ -37,6 +37,7 @@ from name_splitter.app.gui_types import (
     ImageFields,
     TemplateFields,
     UiElements,
+    BatchFields,
     Page,
     Clipboard,
 )
@@ -49,6 +50,8 @@ from name_splitter.app.gui_utils import (
 )
 from name_splitter.app.gui_handlers_config import GuiHandlersConfigMixin
 from name_splitter.app.gui_handlers_size import GuiHandlersSizeMixin
+from name_splitter.app.gui_handlers_batch import GuiHandlersBatchMixin
+from name_splitter.app.error_messages import get_ja_message
 
 
 @dataclass
@@ -59,16 +62,18 @@ class GuiWidgets:
          unwieldy as the UI grows. A single dataclass provides a typed,
          navigable structure that both GuiHandlers and gui.py can use.
     How: Groups widgets into CommonFields, ImageFields, TemplateFields,
-         and UiElements matching the named-tuple dataclasses in gui_types.
+         UiElements, and optionally BatchFields matching the named-tuple
+         dataclasses in gui_types.
     """
 
     common: CommonFields
     image: ImageFields
     template: TemplateFields
     ui: UiElements
+    batch: "BatchFields | None" = None
 
 
-class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
+class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin, GuiHandlersBatchMixin):
     """Event handlers and UI helper methods for CSP Name Splitter GUI.
 
     Why: Centralising all Flet event callbacks in one class (with mixin
@@ -207,14 +212,17 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
 
         Why: Errors from background threads cannot use dialog boxes
              (which require synchronous context); a snackbar is safe.
-        How: Opens a red-background SnackBar with a 5-second duration.
+        How: Translates the English error string to Japanese for GUI display
+             using get_ja_message, then opens a red-background SnackBar with
+             a 5-second duration. The technical English message is preserved
+             in the log via add_error_log — only the snackbar shows Japanese.
              The try/except guard prevents crashes in test environments
              where flet may not be importable.
         """
         try:
             import flet as ft
             self.page.open(ft.SnackBar(  # type: ignore[attr-defined]
-                content=ft.Text(str(msg)),
+                content=ft.Text(get_ja_message(msg)),
                 bgcolor="red",
                 duration=5000,
             ))
@@ -366,6 +374,7 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
                 self.show_success(f"PDF exported: {resolved.name} ({size_kb:.1f} KB)")
             self.set_status("Done")
             self.w.ui.progress_bar.color = "green"
+            self._auto_open_output(out)
             self.flush_from_thread()
         except (ConfigError, LimitExceededError, ImageReadError, ValueError, RuntimeError) as exc:
             self.add_error_log(str(exc))
@@ -374,6 +383,7 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
             self.show_error(str(exc))
             self.flush_from_thread()
         finally:
+            self._flash_taskbar()
             self.w.ui.run_btn.disabled = False
             self.w.ui.cancel_btn.disabled = True
             self.flush_from_thread()
@@ -384,6 +394,76 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
                 self.page.update()
             except Exception:  # noqa: BLE001
                 pass
+
+    def _auto_open_output(self, out_dir: str | None) -> None:
+        """Auto-open output folder after successful job completion.
+
+        Why: ユーザーの「完了→ファイル確認」ワークフローを短縮する。
+             出力先フォルダを手動で探す手間をなくす。
+        How: AppSettings.auto_open_output をチェックし、有効なら
+             os.startfile（Windows）/ subprocess（macOS/Linux）で出力フォルダを開く。
+             ベストエフォート — OSError は無視して処理を続ける。
+
+        Args:
+            out_dir: 出力ディレクトリのパス文字列。None または存在しない場合は no-op。
+        """
+        if not out_dir or not os.path.isdir(out_dir):
+            return
+        # Why: ユーザーが設定で自動オープンを無効にしている場合は何もしない
+        from name_splitter.app.app_settings import load_app_settings
+        settings = load_app_settings()
+        if not settings.auto_open_output:
+            return
+        try:
+            if sys.platform == "win32":
+                os.startfile(out_dir)  # noqa: S606
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", out_dir])  # noqa: S603, S607
+            else:
+                subprocess.Popen(["xdg-open", out_dir])  # noqa: S603, S607
+        except OSError:
+            pass  # ベストエフォート
+
+    def _flash_taskbar(self) -> None:
+        """Flash taskbar button to notify user of job completion.
+
+        Why: ユーザーがバックグラウンドで作業中でも完了を知らせる。
+             SnackBar は別ウィンドウにいるユーザーには見えない。
+        How: Windows ctypes で FlashWindowEx を直接呼び出す。
+             非Windows 環境は no-op（OSError/AttributeError を無視）。
+        """
+        if sys.platform != "win32":
+            return
+        try:
+            import ctypes
+            import ctypes.wintypes
+
+            class FLASHWINFO(ctypes.Structure):
+                _fields_ = [
+                    ("cbSize", ctypes.c_uint),
+                    ("hwnd", ctypes.wintypes.HWND),
+                    ("dwFlags", ctypes.c_uint),
+                    ("uCount", ctypes.c_uint),
+                    ("dwTimeout", ctypes.c_uint),
+                ]
+
+            FLASHW_ALL = 3
+            FLASHW_TIMERNOFG = 12
+
+            hwnd = ctypes.windll.user32.FindWindowW(None, "CSP Name Splitter")
+            if not hwnd:
+                return
+
+            info = FLASHWINFO(
+                cbSize=ctypes.sizeof(FLASHWINFO),
+                hwnd=hwnd,
+                dwFlags=FLASHW_ALL | FLASHW_TIMERNOFG,
+                uCount=3,
+                dwTimeout=0,
+            )
+            ctypes.windll.user32.FlashWindowEx(ctypes.byref(info))
+        except (OSError, AttributeError):
+            pass  # 非Windows環境またはAPI不在時は静かにスキップ
 
     def on_run(self, _: Any) -> None:
         """Handle Run button click — start image-split job in a thread.
@@ -751,4 +831,4 @@ class GuiHandlers(GuiHandlersSizeMixin, GuiHandlersConfigMixin):
         self.auto_preview_if_enabled(e)
 
 
-__all__ = ["GuiWidgets", "GuiHandlers"]
+__all__ = ["GuiWidgets", "GuiHandlers", "BatchFields"]

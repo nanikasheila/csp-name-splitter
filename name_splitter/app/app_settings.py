@@ -51,6 +51,8 @@ class AppSettings:
     theme_mode: str = "light"
     recent_configs: list[str] = field(default_factory=list)
     recent_inputs: list[str] = field(default_factory=list)
+    auto_open_output: bool = True
+    first_run: bool = True
 
     def add_recent_config(self, path: str) -> None:
         """Record a config file path, keeping most-recent first.
