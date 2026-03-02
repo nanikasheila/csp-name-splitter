@@ -49,7 +49,7 @@ def read_image(path: str | Path) -> ImageInfo:
     try:
         with Image.open(image_path) as image:
             width, height = image.size
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, ValueError, SyntaxError) as exc:
         raise ImageReadError(f"Failed to read image: {image_path}") from exc
     return ImageInfo(width=int(width), height=int(height))
 
@@ -67,7 +67,7 @@ def read_image_document(path: str | Path) -> ImageDocument:
         with Image.open(image_path) as image:
             image_data = ImageData.from_pil(image)
             width, height = image_data.width, image_data.height
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, ValueError, SyntaxError) as exc:
         raise ImageReadError(f"Failed to read image: {image_path}") from exc
     info = ImageInfo(width=int(width), height=int(height))
     return ImageDocument(info=info, image=image_data)
