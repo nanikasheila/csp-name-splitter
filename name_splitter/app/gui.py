@@ -34,7 +34,7 @@ from name_splitter.core.template import (
 from name_splitter.app.gui_state import GuiState
 from name_splitter.app.gui_handlers import GuiWidgets, GuiHandlers
 from name_splitter.app.gui_widgets import WidgetBuilder
-from name_splitter.app.gui_types import CommonFields, ImageFields, TemplateFields, UiElements
+from name_splitter.app.gui_types import CommonFields, ImageFields, TemplateFields, UiElements, BatchFields
 from name_splitter.app.app_settings import load_app_settings, save_app_settings
 
 
@@ -77,6 +77,7 @@ def main() -> None:
         image_fields = builder.create_image_split_fields()
         template_fields = builder.create_template_fields()
         ui_elements = builder.create_ui_elements()
+        batch_fields = builder.create_batch_fields()
         
         # Extract frequently used widgets for convenience
         config_field = common_fields["config_field"]
@@ -145,6 +146,7 @@ def main() -> None:
             image=ImageFields(**image_fields),
             template=TemplateFields(**template_fields),
             ui=UiElements(**ui_elements, run_btn=run_btn, cancel_btn=cancel_btn),
+            batch=BatchFields(**batch_fields),
         )
         
         handlers = GuiHandlers(widgets, state, page, clipboard)
@@ -227,6 +229,8 @@ def main() -> None:
         
         # Input画像変更時（Image Splitタブで自動プレビュー）
         input_field.on_blur = handlers.auto_preview_if_enabled
+        # task-005: パス手動入力時にも即座にプレビュー更新
+        input_field.on_change = handlers.auto_preview_if_enabled
         
         # Preview影響フィールド（サイズ情報更新 + 自動プレビュー）
         # -- 即時バリデーション付きハンドラ --
@@ -374,12 +378,21 @@ def main() -> None:
             template_fields, tmpl_btn, pick_template_out
         )
 
+        # Batch tab — wire run/cancel buttons to batch handlers
+        batch_fields["batch_run_btn"].on_click = handlers.on_run_batch
+        batch_fields["batch_cancel_btn"].on_click = handlers.on_cancel_batch
+        tab_batch = builder.build_tab_batch(
+            batch_fields,
+            pick_batch_dir=handlers._pick_batch_dir,
+            pick_batch_out_dir=handlers._pick_batch_out_dir,
+        )
+
         # ============================================================== #
         #  レイアウト組み立て: Preview(左) | Settings(右)                  #
         # ============================================================== #
         outline_color = ft.Colors.OUTLINE if hasattr(ft, "Colors") else ft.colors.OUTLINE
 
-        # Log tab content (3rd tab)
+        # Log tab content (4th tab, after Batch)
         tab_log = ft.Container(
             content=ft.Column([
                 ft.Row(
@@ -426,11 +439,11 @@ def main() -> None:
                     expand=1,
                     padding=ft.Padding(4, 4, 2, 4),
                 ),
-                # Right: 4 Tabs (Config / Image Split / Template / Log)
+                # Right: 5 Tabs (Config / Image Split / Template / Batch / Log)
                 ft.Container(
                     content=ft.Column([
                         ft.Tabs(
-                            length=4,
+                            length=5,
                             selected_index=0,
                             on_change=handlers.on_tab_change,
                             content=ft.Column([
@@ -438,10 +451,11 @@ def main() -> None:
                                     ft.Tab(label="Config", icon=ft.Icons.SETTINGS),
                                     ft.Tab(label="Image Split", icon=ft.Icons.IMAGE),
                                     ft.Tab(label="Template", icon=ft.Icons.GRID_ON),
+                                    ft.Tab(label="Batch", icon=ft.Icons.FOLDER_COPY),
                                     ft.Tab(label="Log", icon=ft.Icons.TERMINAL),
                                 ]),
                                 ft.TabBarView(
-                                    controls=[tab_config, tab_image, tab_template, tab_log],  # type: ignore[list-item]
+                                    controls=[tab_config, tab_image, tab_template, tab_batch, tab_log],  # type: ignore[list-item]
                                     expand=True,
                                 ),
                             ], expand=True),
@@ -461,6 +475,22 @@ def main() -> None:
         handlers.update_size_info()
         # 初期化完了後、自動プレビューを有効化
         state.enable_auto_preview()
+
+        # First-run welcome guidance
+        # Why: 初回起動時にユーザーへ操作手順を案内する。
+        # How: first_run フラグを確認し SnackBar を表示後、フラグを False に更新して保存。
+        if app_settings.first_run:
+            page.snack_bar = ft.SnackBar(  # type: ignore[attr-defined]
+                content=ft.Text(  # type: ignore[attr-defined]
+                    "CSP Name Splitter へようこそ！\n"
+                    "① 画像ファイルを選択 → ② 設定を確認 → ③ 実行ボタンをクリック"
+                ),
+                duration=6000,
+                open=True,
+            )
+            app_settings.first_run = False
+            save_app_settings(app_settings)
+            page.update()
 
         # Keyboard shortcuts: Ctrl+R → Run, Ctrl+. → Cancel
         def on_keyboard(e: ft.KeyboardEvent) -> None:
