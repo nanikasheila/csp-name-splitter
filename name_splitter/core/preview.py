@@ -28,10 +28,10 @@ def _get_font(font_size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont | 
     """
     try:
         return ImageFont.truetype("arial.ttf", font_size)
-    except Exception:  # noqa: BLE001
+    except (OSError, IOError):
         try:
             return ImageFont.load_default()
-        except Exception:  # noqa: BLE001
+        except (OSError, IOError):
             return None
 
 
@@ -62,7 +62,7 @@ def load_and_resize_image(
     try:
         with Image.open(image_path) as opened:
             image = opened.convert("RGBA")
-    except Exception as exc:  # noqa: BLE001
+    except (OSError, ValueError, SyntaxError) as exc:
         raise ImageReadError(f"Failed to read image: {image_path}") from exc
 
     width, height = image.size
@@ -162,10 +162,10 @@ def build_preview_png(
                     bbox = draw.textbbox((0, 0), text, font=font)
                     text_width = bbox[2] - bbox[0]
                     text_height = bbox[3] - bbox[1]
-                except Exception:  # noqa: BLE001
+                except (AttributeError, TypeError, OSError):
                     try:
                         text_width, text_height = draw.textsize(text, font=font)  # type: ignore[attr-defined]
-                    except Exception:  # noqa: BLE001
+                    except (AttributeError, TypeError, OSError):
                         continue
 
                 cell_cx = (cell.x0 + cell.x1) // 2
