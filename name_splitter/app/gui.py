@@ -52,6 +52,18 @@ def main() -> None:
 
         # Load persisted settings (window size, theme, recent files)
         app_settings = load_app_settings()
+
+        # C-3: Set up file logging if enabled
+        _log_file_path: str | None = None
+        if app_settings.log_to_file:
+            try:
+                from name_splitter.core.logging import setup_logging, get_default_log_path
+                log_path = get_default_log_path()
+                setup_logging(log_file=log_path, console=False)
+                _log_file_path = str(log_path)
+            except OSError:
+                pass
+
         page.window.width = app_settings.window_width
         page.window.height = app_settings.window_height
         page.theme_mode = (
@@ -422,6 +434,27 @@ def main() -> None:
 
         theme_icon.on_click = on_theme_toggle  # type: ignore[assignment]
 
+        # C-3: Log file toggle
+        log_file_toggle = ft.Switch(
+            label="ログファイル保存",
+            value=app_settings.log_to_file,
+        )
+
+        def on_log_toggle(_: Any) -> None:
+            app_settings.log_to_file = bool(log_file_toggle.value)
+            save_app_settings(app_settings)
+            if log_file_toggle.value:
+                try:
+                    from name_splitter.core.logging import setup_logging, get_default_log_path
+                    log_path = get_default_log_path()
+                    setup_logging(log_file=log_path, console=False)
+                    handlers.add_log(f"Log file: {log_path}")
+                except OSError as exc:
+                    handlers.add_log(f"[ERROR] Log setup: {exc}")
+            handlers.flush()
+
+        log_file_toggle.on_change = on_log_toggle
+
         # ============================================================== #
         #  Build tab content using WidgetBuilder                         #
         # ============================================================== #
@@ -431,6 +464,9 @@ def main() -> None:
             save_config=handlers.on_save_config,
             preset_fields=preset_fields_obj,
             recent_config_dropdown=recent_config_dd,
+            export_config=handlers.on_export_config,
+            import_config=handlers.on_import_config,
+            log_file_toggle=log_file_toggle,
         )
         tab_image = builder.build_tab_image(
             image_fields, run_btn, cancel_btn, pick_input, pick_out_dir,
