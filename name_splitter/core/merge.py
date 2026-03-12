@@ -104,7 +104,7 @@ def _match_rule(name: str, rules: list[MergeRule]) -> MergeRule | None:
     return None
 
 
-def _warn_unused_rules(label: str, rules, outputs: dict[str, list[LayerRef]]) -> list[str]:
+def _warn_unused_rules(label: str, rules: list[MergeRule], outputs: dict[str, list[LayerRef]]) -> list[str]:
     # 未使用ルールを警告として集計
     warnings: list[str] = []
     matched_layers = {ref.name for refs in outputs.values() for ref in refs}

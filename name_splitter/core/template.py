@@ -3,10 +3,11 @@ from __future__ import annotations
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
+from typing import Any
 
 from .config import GridConfig
 from .errors import ConfigError
-from .grid import compute_cells
+from .grid import CellRect, compute_cells
 from .preview import _get_font
 
 PAPER_SIZES_MM: dict[str, tuple[float, float]] = {
@@ -150,7 +151,7 @@ def _render_template_image(
     style: TemplateStyle,
     dpi: int,
     show_page_numbers: bool = True,
-):
+) -> Any:
     if width_px <= 0 or height_px <= 0:
         raise ConfigError("Template width/height must be positive")
     try:
@@ -265,7 +266,7 @@ def _render_template_image(
     return canvas
 
 
-def _draw_rect(draw, x0: int, y0: int, x1: int, y1: int, width: int, height: int, color, line_width: int) -> None:
+def _draw_rect(draw: Any, x0: int, y0: int, x1: int, y1: int, width: int, height: int, color: Any, line_width: int) -> None:
     if line_width <= 0:
         return
     left = max(0, min(width - 1, int(x0)))
@@ -278,7 +279,7 @@ def _draw_rect(draw, x0: int, y0: int, x1: int, y1: int, width: int, height: int
 
 
 def _frame_rect(
-    cell,
+    cell: CellRect,
     width_mm: float,
     height_mm: float,
     offset_x_mm: float,

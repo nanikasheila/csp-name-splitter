@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Tuple
+from typing import Any, Iterable, Tuple
 
 from .errors import ImageReadError
 
@@ -23,7 +23,7 @@ class ImageData:
         return cls(width=width, height=height, pixels=pixels)
 
     @classmethod
-    def from_pil(cls, image) -> "ImageData":
+    def from_pil(cls, image: Any) -> "ImageData":
         # PIL画像をRGBAのImageDataに変換
         try:
             converted = image.convert("RGBA")

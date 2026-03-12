@@ -12,7 +12,7 @@ from __future__ import annotations
 import base64
 from datetime import datetime
 from dataclasses import replace
-from typing import Any
+from typing import Any, Callable
 
 from name_splitter.core import (
     CancelToken,
@@ -329,17 +329,17 @@ def main() -> None:
             else:
                 fld.error_text = None  # type: ignore[attr-defined]
 
-        def make_preview_handler():
+        def make_preview_handler() -> Callable[[Any], None]:
             """on_change用: バリデーション + サイズ情報更新のみ（軽量）"""
-            def handler(e):
+            def handler(e: Any) -> None:
                 if hasattr(e, "control") and isinstance(e.control, ft.TextField):
                     _validate_field(e.control)
                 handlers.update_size_info(e)
             return handler
 
-        def make_blur_handler():
+        def make_blur_handler() -> Callable[[Any], None]:
             """on_blur用: バリデーション + サイズ情報更新 + プレビュー更新"""
-            def handler(e):
+            def handler(e: Any) -> None:
                 if hasattr(e, "control") and isinstance(e.control, ft.TextField):
                     _validate_field(e.control)
                 handlers.update_size_info(e)
