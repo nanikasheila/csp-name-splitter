@@ -1,5 +1,7 @@
 # 用語集
 
+> ← [ARCHITECTURE.md](../../ARCHITECTURE.md) に戻る
+
 **最終更新**: 2026年3月1日
 
 ---

@@ -3,6 +3,12 @@
 **最終更新**: 2026年2月10日  
 **バージョン**: v1.0.0（製品化対応版）
 
+> **関連ドキュメント**
+> - [モジュール構成](docs/architecture/module-map.md) — モジュール一覧と責務
+> - [データフロー](docs/architecture/data-flow.md) — 主要データフローと変換ポイント
+> - [用語集](docs/architecture/glossary.md) — ドメイン用語・略語定義
+> - [設計判断記録](docs/architecture/adr/) — Architecture Decision Records
+
 ---
 
 ## 📋 目次
