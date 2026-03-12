@@ -30,8 +30,11 @@ class ImageData:
         except (OSError, ValueError, AttributeError) as exc:
             raise ImageReadError("Failed to convert image to RGBA") from exc
         width, height = converted.size
-        data = list(converted.getdata())
-        pixels = [data[row * width : (row + 1) * width] for row in range(height)]
+        pixel_access = converted.load()
+        pixels = [
+            [pixel_access[x, y] for x in range(width)]
+            for y in range(height)
+        ]
         return cls(width=width, height=height, pixels=pixels)
 
     def crop(self, x0: int, y0: int, x1: int, y1: int) -> "ImageData":
