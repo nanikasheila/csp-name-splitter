@@ -38,7 +38,7 @@ def test_auto_open_output_calls_startfile_on_windows() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         with (
             patch.object(sys, "platform", "win32"),
-            patch("name_splitter.app.gui_handlers.os.startfile", create=True) as mock_startfile,
+            patch("name_splitter.app.gui_handlers_job.os.startfile", create=True) as mock_startfile,
             patch(
                 "name_splitter.app.app_settings.load_app_settings",
                 return_value=AppSettings(auto_open_output=True),
@@ -57,7 +57,7 @@ def test_auto_open_output_skips_nonexistent_dir() -> None:
     nonexistent = "/nonexistent/path/that/does/not/exist"
     with (
         patch.object(sys, "platform", "win32"),
-        patch("name_splitter.app.gui_handlers.os.startfile", create=True) as mock_startfile,
+        patch("name_splitter.app.gui_handlers_job.os.startfile", create=True) as mock_startfile,
     ):
         GuiHandlers._auto_open_output(handlers, nonexistent)
         mock_startfile.assert_not_called()
@@ -74,7 +74,7 @@ def test_auto_open_output_oserror_does_not_crash() -> None:
         with (
             patch.object(sys, "platform", "win32"),
             patch(
-                "name_splitter.app.gui_handlers.os.startfile",
+                "name_splitter.app.gui_handlers_job.os.startfile",
                 create=True,
                 side_effect=OSError("mock error"),
             ),
@@ -96,7 +96,7 @@ def test_auto_open_output_disabled_by_setting() -> None:
     with tempfile.TemporaryDirectory() as tmpdir:
         with (
             patch.object(sys, "platform", "win32"),
-            patch("name_splitter.app.gui_handlers.os.startfile", create=True) as mock_startfile,
+            patch("name_splitter.app.gui_handlers_job.os.startfile", create=True) as mock_startfile,
             patch(
                 "name_splitter.app.app_settings.load_app_settings",
                 return_value=AppSettings(auto_open_output=False),
