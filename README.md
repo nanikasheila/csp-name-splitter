@@ -434,6 +434,23 @@ pytest tests/
 python tools/create_test_env.py
 ```
 
+#### ロックファイルによる再現可能インストール
+
+バージョンを固定した環境を構築する場合:
+
+```bash
+pip install -r requirements.lock          # 本番依存のみ
+pip install -r requirements-dev.lock      # 開発用依存含む
+```
+
+ロックファイルの更新（依存バージョン変更時）:
+
+```bash
+pip install pip-tools
+pip-compile pyproject.toml -o requirements.lock
+pip-compile pyproject.toml --extra dev -o requirements-dev.lock
+```
+
 ### プロジェクト構造
 
 ```
