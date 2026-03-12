@@ -39,10 +39,23 @@ class TemplateStyle:
 
 
 def mm_to_px(mm: float, dpi: int) -> int:
+    """Convert millimetres to pixels at the given DPI.
+
+    Why: Template geometry is specified in mm for print accuracy but must
+         be converted to integer pixel counts for rasterisation.
+    How: Applies the standard formula mm * dpi / 25.4, rounded to nearest int.
+    """
     return int(round(mm * dpi / 25.4))
 
 
 def compute_page_size_px(size_name: str, dpi: int, orientation: str = "portrait") -> tuple[int, int]:
+    """Look up a named paper size and return its pixel dimensions at the given DPI.
+
+    Why: Users specify paper sizes symbolically (e.g. "A4") rather than in
+         pixels, so a lookup-and-convert step is needed before rendering.
+    How: Looks up width/height in mm from PAPER_SIZES_MM, swaps axes for
+         landscape orientation, then calls mm_to_px for each dimension.
+    """
     key = size_name.strip().upper()
     if key not in PAPER_SIZES_MM:
         raise ValueError(f"Unknown paper size: {size_name}")
@@ -55,6 +68,13 @@ def compute_page_size_px(size_name: str, dpi: int, orientation: str = "portrait"
 
 
 def parse_hex_color(value: str, alpha: int = 255) -> tuple[int, int, int, int]:
+    """Parse a CSS-style hex colour string into an RGBA tuple.
+
+    Why: Config and UI code supply colours as #RRGGBB strings; internal APIs
+         work with RGBA tuples, so a single parsing helper avoids repetition.
+    How: Strips the leading '#', expands 3-digit shorthand, splits into R/G/B
+         byte pairs, and clamps the supplied alpha to [0, 255].
+    """
     raw = value.strip().lstrip("#")
     if len(raw) == 3:
         raw = "".join(char * 2 for char in raw)
@@ -76,7 +96,13 @@ def generate_template_png(
     dpi: int,
     show_page_numbers: bool = False,
 ) -> Path:
-    """テンプレートPNGを生成（実際の作業用、デフォルトでページ番号非表示）"""
+    """Generate and save a template PNG overlay for print layout guidance.
+
+    Why: Users need a printable grid overlay to align their artwork to the
+         page grid before importing into their design tool.
+    How: Renders the template image via _render_template_image(), ensures the
+         parent directory exists, and saves as PNG to the given path.
+    """
     image = _render_template_image(width_px, height_px, grid, style, dpi, show_page_numbers)
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -94,7 +120,13 @@ def build_template_preview_png(
     max_dim: int = 1600,
     show_page_numbers: bool = True,
 ) -> bytes:
-    """テンプレートプレビューを生成（デフォルトでページ番号表示）"""
+    """Generate a scaled-down template preview as PNG bytes for the UI.
+
+    Why: Displaying the full-resolution template in the GUI would be slow;
+         a downscaled preview gives instant visual feedback when settings change.
+    How: Scales grid, style, and DPI proportionally to fit within max_dim,
+         renders the template image, and encodes the result to PNG bytes.
+    """
     if width_px <= 0 or height_px <= 0:
         raise ConfigError("Template width/height must be positive")
     scale = 1.0

@@ -35,6 +35,14 @@ def write_plan(
     selected_pages: list[int],
     merge_result: MergeResult | None = None,
 ) -> RenderPlan:
+    """Write a render-plan manifest (YAML or JSON) describing all pages and settings.
+
+    Why: A machine-readable manifest lets downstream tools (PDF export, CI
+         checks) inspect what was rendered without re-running the job.
+    How: Serialises source dimensions, grid settings, output config, and
+         per-page cell rects into a YAML file; falls back to JSON if PyYAML
+         is unavailable.
+    """
     # plan.yamlを書き出す（JSON互換性のため、JSONでも保存可能だが、デフォルトはYAML）
     out_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = out_dir / "plan.yaml"
@@ -103,6 +111,14 @@ def render_pages(
     merge_result: MergeResult,
     on_page: Callable[[RenderedPage, int, int], None] | None = None,
 ) -> list[RenderedPage]:
+    """Crop the merged composite image to each cell and save as individual page files.
+
+    Why: The final output step must cut the full-canvas composite into the
+         per-page tiles that users actually print or import.
+    How: Iterates over selected_pages, crops each cell rect from the
+         composite, optionally resizes to output_dpi, then saves to a
+         per-page directory with the configured basename and extension.
+    """
     # 合成済み画像をセル単位で切り出して保存
     if not merge_result.output_images:
         raise RuntimeError("No merged images available for rendering")

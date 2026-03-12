@@ -18,6 +18,14 @@ class CellRect:
 
 
 def compute_cells(width: int, height: int, grid: GridConfig) -> list[CellRect]:
+    """Compute grid cell bounding rectangles for a canvas of the given size.
+
+    Why: Translates abstract grid config (rows, cols, margins, gutters) into
+         concrete pixel rectangles that renderers use to crop each page.
+    How: Distributes usable space evenly across rows/columns, assigns the
+         remainder to the last row/column, then iterates in the order
+         specified by grid.order to produce an indexed CellRect list.
+    """
     if width <= 0 or height <= 0:
         raise ConfigError("Canvas width/height must be positive")
 

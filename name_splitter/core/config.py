@@ -115,6 +115,13 @@ def _parse_rules(values: Iterable[dict[str, Any]] | None, label: str) -> tuple[M
 
 
 def load_config(path: str | Path) -> Config:
+    """Load and parse a YAML or JSON config file, returning a validated Config.
+
+    Why: Provides a single entry point for reading user-supplied config from
+         disk, so callers never deal with raw YAML/JSON dicts directly.
+    How: Detects format from file extension, parses into a Config dataclass,
+         then calls validate_config() before returning.
+    """
     config_path = Path(path)
     if not config_path.exists():
         raise ConfigError(f"Config not found: {config_path}")
@@ -205,11 +212,25 @@ def load_config(path: str | Path) -> Config:
 
 
 def load_default_config() -> Config:
+    """Load the built-in default configuration from the resources directory.
+
+    Why: Ensures a consistent baseline config is available without requiring
+         users to supply a config file for simple use cases.
+    How: Resolves the bundled default_config.yaml relative to this module
+         and delegates to load_config().
+    """
     default_path = Path(__file__).resolve().parents[2] / "resources" / "default_config.yaml"
     return load_config(default_path)
 
 
 def validate_config(cfg: Config) -> None:
+    """Validate Config field constraints, raising ConfigError on violations.
+
+    Why: Catches invalid combinations (e.g. zero rows, negative margins) early
+         so downstream code can assume all values are sane.
+    How: Checks each field against its allowed range or allowed-value set and
+         raises ConfigError with a descriptive message on the first failure.
+    """
     if cfg.version != 1:
         raise ConfigError(f"Unsupported config version: {cfg.version}")
     if cfg.grid.rows <= 0 or cfg.grid.cols <= 0:

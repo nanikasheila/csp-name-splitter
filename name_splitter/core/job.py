@@ -68,6 +68,14 @@ def run_job(
     on_progress: Callable[[ProgressEvent], None] | None = None,
     cancel_token: CancelToken | None = None,
 ) -> JobResult:
+    """Orchestrate a full split job: read image → compute grid → render pages → export.
+
+    Why: All job phases (image load, grid computation, page render, PDF export)
+         must run in a fixed sequence with progress reporting and cancel support.
+    How: Calls read_image_document, compute_cells, render_pages, and optionally
+         export_pdf in order, emitting ProgressEvents after each phase and
+         honouring CancelToken checks between phases.
+    """
     # 画像読み込みからレンダリングまでの一連処理
     _job_start = time.monotonic()
 

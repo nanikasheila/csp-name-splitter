@@ -45,7 +45,13 @@ class BatchResult:
 
 
 def find_images_in_directory(directory: Path, recursive: bool = False) -> list[Path]:
-    """ディレクトリ内のPNG画像を検索"""
+    """Find all PNG image files within a directory, sorted by path.
+
+    Why: Batch mode needs a reliable way to collect image files from a folder
+         without requiring the caller to walk the filesystem manually.
+    How: Uses glob('**/*.png') for recursive search or glob('*.png') for
+         flat search, then returns results sorted for deterministic ordering.
+    """
     if recursive:
         images = list(directory.glob("**/*.png"))
     else:
@@ -83,15 +89,13 @@ def run_batch(
     on_progress: Callable[[BatchProgress], None] | None = None,
     cancel_token: CancelToken | None = None,
 ) -> BatchResult:
-    """バッチ処理を実行
-    
-    Args:
-        job_specs: ジョブ仕様のリスト
-        on_progress: 進捗コールバック
-        cancel_token: キャンセルトークン
-        
-    Returns:
-        バッチ実行結果
+    """Execute multiple split jobs sequentially, collecting per-job results.
+
+    Why: Users need to process an entire directory of images in one operation
+         without writing their own loop, error handling, or progress tracking.
+    How: Iterates job_specs in order, calls run_job() for each, captures
+         exceptions as failed BatchJobResult entries, and checks CancelToken
+         before each job to support mid-batch cancellation.
     """
     results: list[BatchJobResult] = []
     total_jobs = len(job_specs)
@@ -177,16 +181,13 @@ def prepare_batch_jobs(
     recursive: bool = False,
     auto_config: bool = True,
 ) -> list[BatchJobSpec]:
-    """パスのリストからバッチジョブ仕様を準備
-    
-    Args:
-        paths: 画像ファイルまたはディレクトリのパス
-        default_config: デフォルト設定
-        recursive: ディレクトリを再帰的に探索するか
-        auto_config: 画像ごとに設定ファイルを自動検索するか
-        
-    Returns:
-        ジョブ仕様のリスト
+    """Build a list of BatchJobSpec objects from a mix of file and directory paths.
+
+    Why: CLI and GUI pass arbitrary path lists (files + directories) that must
+         be expanded and paired with per-image configs before batching.
+    How: Expands directories via find_images_in_directory, resolves per-image
+         config files via find_config_for_image when auto_config is True, and
+         skips non-PNG files.
     """
     job_specs: list[BatchJobSpec] = []
     

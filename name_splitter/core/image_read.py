@@ -38,6 +38,13 @@ class ImageDocument:
 
 
 def read_image(path: str | Path) -> ImageInfo:
+    """Read image metadata (width and height) without loading pixel data.
+
+    Why: Grid and limit checks only need dimensions, so avoiding a full pixel
+         load keeps memory usage low for large source images.
+    How: Opens the file with PIL in a context manager to read the size header,
+         then closes without decoding pixel data.
+    """
     # 画像のメタ情報だけ読み込む
     image_path = Path(path)
     if not image_path.exists():
@@ -55,6 +62,13 @@ def read_image(path: str | Path) -> ImageInfo:
 
 
 def read_image_document(path: str | Path) -> ImageDocument:
+    """Fully load an image file and return it as an RGBA ImageDocument.
+
+    Why: Rendering requires actual pixel data, so the full image must be
+         decoded and converted to the internal RGBA representation.
+    How: Opens with PIL, converts to RGBA via ImageData.from_pil(), and
+         bundles the result with its ImageInfo into an ImageDocument.
+    """
     # 画像全体を読み込む
     image_path = Path(path)
     if not image_path.exists():

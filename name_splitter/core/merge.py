@@ -32,6 +32,15 @@ def apply_merge_rules(
     *,
     canvas_size: tuple[int, int] | None = None,
 ) -> MergeResult:
+    """Apply merge rules to a layer tree, grouping layers into named output slots.
+
+    Why: Different print products need different layer combinations (e.g.
+         a line-art layer vs a colour layer), so rules map layer names to
+         output slots without hardcoding the structure.
+    How: Flattens the layer tree, matches each leaf against group_rules or
+         layer_rules, composites matched layers per output slot when
+         canvas_size is provided, and records unmatched layers as warnings.
+    """
     # ルールマッチングと（必要なら）画像合成を実行
     outputs: dict[str, list[LayerRef]] = {}
     unmatched: list[LayerRef] = []

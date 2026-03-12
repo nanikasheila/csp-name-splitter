@@ -130,6 +130,13 @@ def composite_layers(
     canvas_size: tuple[int, int],
     layers: Iterable[tuple[ImageData, tuple[int, int]]],
 ) -> ImageData:
+    """Alpha-composite multiple positioned layers onto a blank canvas.
+
+    Why: Merging named output layers into a single image requires sequential
+         alpha blending in layer order, which this helper encapsulates.
+    How: Creates a blank RGBA canvas then calls composite_over() for each
+         (ImageData, offset) pair in iteration order.
+    """
     # 複数レイヤーを順に合成して1枚にする
     canvas = ImageData.blank(canvas_size[0], canvas_size[1])
     for image, (x0, y0) in layers:
