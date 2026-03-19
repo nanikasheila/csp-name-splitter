@@ -17,7 +17,7 @@ model: claude-opus-4.6
 
 ## 設計哲学
 
-ペースレイヤリング・非機能要求・データフローの詳細は docs/architecture/design-philosophy.md を参照。
+ペースレイヤリング・非機能要求・データフローの詳細は docs/design-philosophy.md を参照。
 
 ## CLI 固有: 必要ルール
 
@@ -42,7 +42,7 @@ CLI では `rules/` が自動ロードされない。このエージェントが
 
 構造評価時に `explore` エージェントを並列で活用する:
 
-```
+```text
 PARALLEL:
   - explore: "ディレクトリ構造を調査し、層の識別を行う"
   - explore: "import/require の依存方向を検出し、循環依存を特定する"
@@ -72,20 +72,7 @@ PARALLEL:
 
 ## Board 連携
 
-このエージェントは Board の以下のセクションに関与する。
-書き込み権限の詳細は `rules/workflow-state.md` の権限マトリクスを参照。
-
-### Board ファイルの参照
-
-オーケストレーターからのプロンプトに Board の主要フィールド（feature_id, maturity, flow_state, cycle,
-関連 artifacts のサマリ）が直接埋め込まれる。
-詳細な artifact 参照が必要な場合は、プロンプトに含まれる絶対パスで `view` する。
-
-| 操作 | 対象フィールド | 権限 |
-|---|---|---|
-| 読み取り | Board 全体 | ✅ |
-| 書き込み | `artifacts.architecture_decision` | ✅ |
-| 書き込み | `flow_state` / `gates` / `maturity` | ❌（オーケストレーター専有） |
+> Board連携共通: `agents/references/board-integration-guide.md` を参照。以下はこのエージェント固有のBoard連携:
 
 ### 入力として参照する Board フィールド
 
@@ -112,6 +99,12 @@ PARALLEL:
   "risks": ["外部API依存の抽象化が必要"]
 }
 ```
+
+### 出力スキーマ契約
+
+本エージェントの出力は `board-artifacts.schema.json` の `artifact_architecture_decision` 定義に準拠する。
+
+出力先: `artifacts.architecture_decision`
 
 ## 分析フレームワーク
 
@@ -264,10 +257,10 @@ PARALLEL:
 
 ## 禁止事項
 
+> 共通制約: `agents/references/common-constraints.md` を参照。以下はこのエージェント固有の禁止事項:
+
 - コードの直接編集
 - 他エージェントの直接呼び出し（オーケストレーター経由で `task` ツールを使用すること）
 - テストの実行
 - タスク分解・スケジュール策定（planner の責務）
 - 個別のコード品質判断（reviewer の責務）
-- Board の `flow_state` / `gates` / `maturity` への直接書き込み（オーケストレーター専有）
-- Board への機密情報（パスワード、APIキー、トークン）の記録
