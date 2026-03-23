@@ -33,11 +33,9 @@ model: claude-sonnet-4.6
 
 ## Board 連携
 
-### Board ファイルの参照
+> Board連携共通: `agents/references/board-integration-guide.md` を参照。以下はこのエージェント固有のBoard連携:
 
-`.copilot/boards/<feature-id>/board.json`
-
-### 入力として参照するフィールド
+### 入力として参照する Board フィールド
 
 | フィールド | 用途 |
 |---|---|
@@ -46,7 +44,7 @@ model: claude-sonnet-4.6
 | `artifacts.implementation` | 実装完了後の公開 API シグネチャ参照（利用可能な場合） |
 | `maturity` | テストカバレッジ要求レベルの判断 |
 
-### 出力として書き込むフィールド
+### 出力として書き込む artifacts フィールド
 
 `artifacts.test_design` に以下の構造で書き込む:
 
@@ -77,6 +75,36 @@ model: claude-sonnet-4.6
 }
 ```
 
+`artifacts.validation_plan` に以下の構造で書き込む（V字モデル左辺 — 妥当性確認計画）:
+
+```json
+{
+  "summary": "妥当性確認計画の概要",
+  "validation_items": [
+    {
+      "ac_id": "AC-001",
+      "requirement_ref": "FR-001",
+      "description": "受け入れ基準の内容",
+      "validation_method": "automated_test | manual_check | review | demo",
+      "test_case_refs": ["TC-001", "TC-002"],
+      "expected_evidence": "期待するエビデンスの説明",
+      "pass_criteria": "合格基準"
+    }
+  ],
+  "coverage_summary": {
+    "total_ac": 5,
+    "covered_ac": 5,
+    "uncovered_ac": 0,
+    "coverage_rate": "100%"
+  },
+  "assumptions": ["要求の前提となる仮定（テスト設計時に識別したもの）"]
+}
+```
+
+> **Why**: V字モデルでは、要求に対する妥当性確認（Validation）は実装前に計画する。
+> **How**: テストケース設計と同時に、各 AC に対する検証方法・合格基準を定義する。
+> この計画が test-verifier による妥当性確認（Phase 8）の入力となる。
+
 ### Maturity 別のテスト設計基準
 
 | Maturity | テスト設計の深さ |
@@ -87,6 +115,55 @@ model: claude-sonnet-4.6
 | `stable` | 全カテゴリ + regression + カバレッジマトリクス |
 | `release-ready` | 全カテゴリ + security + 全 AC のトレーサビリティ |
 
+### 出力スキーマ契約
+
+本エージェントの出力は `board-artifacts.schema.json` の `artifact_test_design` および `artifact_validation_plan` 定義に準拠する。
+
+出力先: `artifacts.test_design`, `artifacts.validation_plan`
+
+## Sealed テスト基準（オプション）
+
+maturity が stable 以上の場合、通常の test_cases に加えて `sealed_criteria` を出力できる。
+
+> **Why**: dark-factory の知見。developer に見せない受け入れ基準を設けることで、
+> テスト仕様への overfitting を防ぎ、要求ベースの実装を促進する。
+
+### sealed_criteria の出力
+
+Board の `artifacts.test_design` に以下を追加して書き込む:
+
+```json
+{
+  "test_cases": [...],
+  "sealed_criteria": {
+    "enabled": true,
+    "criteria": [
+      {
+        "id": "SC-1",
+        "category": "edge_case",
+        "description": "空の入力配列に対して空の結果を返すこと",
+        "validation_method": "ユニットテストで空配列を入力し、空配列が返ることを確認"
+      }
+    ],
+    "rationale": "developer が test_cases だけを見て実装した場合に見落としがちなエッジケースをカバー"
+  }
+}
+```
+
+### sealed_criteria に含めるもの
+
+| カテゴリ | 例 |
+|---|---|
+| `edge_case` | 境界値・空入力・null・極大値 |
+| `error_handling` | 予期しないエラー・タイムアウト・ネットワーク障害 |
+| `performance` | レスポンスタイム・メモリ使用量の上限 |
+| `security` | インジェクション・認証バイパス・権限昇格 |
+
+### sealed_criteria に含めないもの
+
+- 通常のハッピーパステスト（test_cases に含める）
+- 実装方法に依存する検証（要求ベースのみ）
+
 ## 設計プロセス
 
 1. **要求の読み込み**: `artifacts.requirements` から FR / AC / EC を取得
@@ -95,6 +172,7 @@ model: claude-sonnet-4.6
 4. **エッジケースの補完**: EC に対応するテストケースを追加
 5. **カバレッジマトリクスの作成**: 要求 → テストケースのトレーサビリティを確保
 6. **テストインフラの特定**: 必要なフィクスチャ・ヘルパーを列挙
+7. **妥当性確認計画の策定**: 各 AC に対する検証方法・合格基準・期待エビデンスを定義し `validation_plan` に出力
 
 ## 実装者（developer）との関係
 
@@ -104,9 +182,10 @@ model: claude-sonnet-4.6
 
 ### テスト駆動の流れ
 
-```
-analyst → test-designer → developer（実装 + テストコード） → test-verifier
-  要求       テスト仕様       実装 + テストコード実装          第三者検証
+```text
+analyst → test-designer → developer（実装 + テストコード） → test-verifier（検証 + 妥当性確認）
+  要求       テスト仕様 +       実装 + テストコード実装          第三者検証 + AC充足判定
+             妥当性確認計画
 ```
 
 ## 他エージェントとの連携
@@ -119,6 +198,8 @@ analyst → test-designer → developer（実装 + テストコード） → tes
 | test-verifier | test_design を基準として、テスト充足性を検証する |
 
 ## 禁止事項
+
+> 共通制約: `agents/references/common-constraints.md` を参照。以下はこのエージェント固有の禁止事項:
 
 - テストコードを書いてはならない（仕様の設計のみ）
 - ファイルを編集してはならない（読み取り専用）

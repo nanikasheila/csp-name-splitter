@@ -1,0 +1,21 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for CSP Name Splitter",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "shell:allow-execute",
+    "shell:allow-spawn",
+    "shell:allow-stdin-write",
+    "shell:allow-kill",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "dialog:allow-message",
+    "dialog:allow-ask",
+    "fs:allow-read-text-file",
+    "fs:allow-write-text-file",
+    "fs:allow-exists",
+    "fs:allow-read-dir"
+  ]
+}

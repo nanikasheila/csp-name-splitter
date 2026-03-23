@@ -44,29 +44,27 @@ CLI では `rules/` が自動ロードされない。このエージェントが
 
 テストコマンドは `task` ビルトインエージェントで実行し、メインコンテキストを汚さない:
 
-```
+```text
 task(agent_type="task", prompt="以下のテストコマンドを実行せよ: <command>")
 ```
 
 成功時は簡潔なサマリ、失敗時は完全な出力が返される。
 
+## 実装前の妥当性確認
+
+実装着手前に以下を明確にする。**ask_user での確認は不要**（Board の情報から確認する）:
+
+1. **目的の再確認**: `artifacts.requirements_development.problem_statement` を確認し、表面的依頼と本来目的の区別を認識する
+2. **成功条件の確認**: `artifacts.requirements` の AC を確認し、実装完了の基準を把握する
+3. **仮定の認識**: `artifacts.requirements_development.assumptions` を確認し、実装上の前提が事実か仮定かを区別する
+4. **不明点の把握**: 不明な事項は推定で埋めず、`artifacts.implementation` に「不明」として記録する
+
+> **Why**: 実装者が目的を理解せず作業すると、技術的に正しいが目的に合わない実装になる。
+> **How**: Board に蓄積された要求情報を実装前に確認し、判断の根拠を意識する。
+
 ## Board 連携
 
-このエージェントは Board の以下のセクションに関与する。
-書き込み権限の詳細は `rules/workflow-state.md` の権限マトリクスを参照。
-
-### Board ファイルの参照
-
-オーケストレーターからのプロンプトに Board の主要フィールド（feature_id, maturity, flow_state, cycle,
-関連 artifacts のサマリ）が直接埋め込まれる。
-詳細な artifact 参照が必要な場合は、プロンプトに含まれる絶対パスで `view` する。
-
-| 操作 | 対象フィールド | 権限 |
-|---|---|---|
-| 読み取り | Board 全体 | ✅ |
-| 書き込み | `artifacts.implementation` | ✅ |
-| 書き込み | `artifacts.test_results` | ✅ |
-| 書き込み | `flow_state` / `gates` | ❌（オーケストレーター専有） |
+> Board連携共通: `agents/references/board-integration-guide.md` を参照。以下はこのエージェント固有のBoard連携:
 
 ### 入力として参照する Board フィールド
 
@@ -114,12 +112,19 @@ task(agent_type="task", prompt="以下のテストコマンドを実行せよ: <
 | `stable` | 慎重な変更。既存機能への影響を最小化 |
 | `release-ready` | 最小限の変更のみ。全テストの回帰確認必須 |
 
+### 出力スキーマ契約
+
+本エージェントの出力は `board-artifacts.schema.json` の以下の定義に準拠する。
+
+- `artifact_implementation` → 出力先: `artifacts.implementation`
+- `artifact_test_results` → 出力先: `artifacts.test_results`
+
 ## 行動ルール
 
-- コードを生成・修正した場合、必ず動作確認を行う
-- 変更前に影響範囲を確認し、既存機能を壊さない
-- `.github/rules/` のルールを遵守する
-- `.github/skills/` のワークフローに従って作業する
+- コードを生成・修正した場合、必ず動作確認を行う（Why: コンパイル成功だけでは論理エラーを検出できない。実際の入出力で期待動作を確認することでバグの早期発見につながる）
+- 変更前に影響範囲を確認し、既存機能を壊さない（Why: 局所的な変更が依存関係を通じて予期しない箇所へ波及するリスクがあり、事前の影響範囲把握が回帰バグの防止に直結する）
+- `.github/rules/` のルールを遵守する（Why: プロジェクト固有の規約との一貫性を保つことでレビューコストが下がり、コードベース全体の統一的な品質が維持される）
+- `.github/skills/` のワークフローに従って作業する（Why: スキル定義には前後エージェントとの連携手順が記述されており、手順を逸脱すると Board の状態不整合やデータ欠落が発生する）
 
 ## 実装モードとテストモード
 
@@ -145,9 +150,9 @@ task(agent_type="task", prompt="以下のテストコマンドを実行せよ: <
 
 ## 禁止事項
 
-- main ブランチ上での直接編集
-- squash merge の使用
-- テストなしのコミット（Gate Profile で `test_gate.required: false` の場合を除く）
-- sed 等によるファイル直接編集（必ず `edit` ツールを使用する）
-- Board の `flow_state` / `gates` / `maturity` への直接書き込み（オーケストレーター専有）
-- Board への機密情報（パスワード、APIキー、トークン）の記録
+> 共通制約: `agents/references/common-constraints.md` を参照。以下はこのエージェント固有の禁止事項:
+
+- main ブランチ上での直接編集（Why: レビュープロセスをバイパスすると破壊的変更が即座に本番へ到達し、ロールバックコストが急増する）
+- squash merge の使用（Why: コミット履歴が圧縮されると変更の追跡・バグ原因の特定が困難になる。履歴の保全は障害調査の重要資産）
+- テストなしのコミット（Gate Profile で `test_gate.required: false` の場合を除く）（Why: テストのないコードは動作保証がなく、後続の変更でサイレントに壊れるリスクが高い。テストは最低限の品質ゲート）
+- sed 等によるファイル直接編集（必ず `edit` ツールを使用する）（Why: sed 等は意図しない行の変更や文字エンコード破損を引き起こすリスクがある。edit ツールは対象箇所を特定してから適用するため安全）

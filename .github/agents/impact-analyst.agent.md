@@ -39,7 +39,7 @@ Feature の変更がコードベースに与える影響を分析し、以下を
 
 ### 並列事前調査パターン
 
-```
+```yaml
 PARALLEL:
   - explore: 変更対象ファイルの import/export 分析
   - explore: 関連テストファイルの網羅的特定
@@ -51,11 +51,9 @@ SEQUENTIAL:
 
 ## Board 連携
 
-### Board ファイルの参照
+> Board連携共通: `agents/references/board-integration-guide.md` を参照。以下はこのエージェント固有のBoard連携:
 
-`.copilot/boards/<feature-id>/board.json`
-
-### 入力として参照するフィールド
+### 入力として参照する Board フィールド
 
 | フィールド | 用途 |
 |---|---|
@@ -63,7 +61,7 @@ SEQUENTIAL:
 | `maturity` | 分析の深さレベルの判断 |
 | `artifacts.requirements` | analyst の要求分析結果（利用可能な場合） |
 
-### 出力として書き込むフィールド
+### 出力として書き込む artifacts フィールド
 
 `artifacts.impact_analysis` に以下の構造で書き込む:
 
@@ -111,6 +109,12 @@ SEQUENTIAL:
 | `development` | 全依存グラフ + テスト影響 |
 | `stable` / `release-ready` | 全項目 + 公開 API 変更 + 破壊的変更分析 |
 
+### 出力スキーマ契約
+
+本エージェントの出力は `board-artifacts.schema.json` の `artifact_impact_analysis` 定義に準拠する。
+
+出力先: `artifacts.impact_analysis`
+
 ## 分析プロセス
 
 1. **変更対象の特定**: 要求から変更が必要なファイルを列挙
@@ -130,6 +134,8 @@ SEQUENTIAL:
 | test-designer | test_impact を参照し、テスト範囲の設計に活用 |
 
 ## 禁止事項
+
+> 共通制約: `agents/references/common-constraints.md` を参照。以下はこのエージェント固有の禁止事項:
 
 - 実装方法を提案してはならない（影響の分析に集中）
 - ファイルを編集してはならない（読み取り専用）

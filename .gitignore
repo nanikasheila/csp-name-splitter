@@ -79,3 +79,10 @@ output/
 
 # mypy
 .mypy_cache/
+
+# Tauri
+tauri-app/node_modules/
+tauri-app/dist/
+tauri-app/src-tauri/target/
+tauri-app/src-tauri/binaries/
+tauri-app/src-tauri/icons/

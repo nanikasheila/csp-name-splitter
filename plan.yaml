@@ -1,0 +1,166 @@
+source:
+  width: 6307
+  height: 8835
+grid:
+  rows: 4
+  cols: 4
+  order: rtl_ttb
+  margin_px: 295
+  margin_top_px: 118
+  margin_bottom_px: 129
+  margin_left_px: 295
+  margin_right_px: 129
+  gutter_px: 0
+  gutter_unit: px
+  margin_unit: mm
+  dpi: 600
+  page_size_name: Custom
+  orientation: portrait
+  page_width_px: 6071
+  page_height_px: 8598
+  page_size_unit: mm
+output:
+  page_basename: page_{page:03d}
+  layer_stack:
+  - flat
+  raster_ext: png
+  container: png
+  layout: layers
+  output_dpi: 350
+  page_number_start: 1
+  skip_pages: []
+  odd_even: all
+merge:
+  outputs:
+    flat: 0
+  unmatched: 0
+  warnings: []
+pages:
+- page_index: 0
+  row: 0
+  col: 3
+  rect:
+  - 4705
+  - 118
+  - 6178
+  - 2265
+- page_index: 1
+  row: 0
+  col: 2
+  rect:
+  - 3235
+  - 118
+  - 4705
+  - 2265
+- page_index: 2
+  row: 0
+  col: 1
+  rect:
+  - 1765
+  - 118
+  - 3235
+  - 2265
+- page_index: 3
+  row: 0
+  col: 0
+  rect:
+  - 295
+  - 118
+  - 1765
+  - 2265
+- page_index: 4
+  row: 1
+  col: 3
+  rect:
+  - 4705
+  - 2265
+  - 6178
+  - 4412
+- page_index: 5
+  row: 1
+  col: 2
+  rect:
+  - 3235
+  - 2265
+  - 4705
+  - 4412
+- page_index: 6
+  row: 1
+  col: 1
+  rect:
+  - 1765
+  - 2265
+  - 3235
+  - 4412
+- page_index: 7
+  row: 1
+  col: 0
+  rect:
+  - 295
+  - 2265
+  - 1765
+  - 4412
+- page_index: 8
+  row: 2
+  col: 3
+  rect:
+  - 4705
+  - 4412
+  - 6178
+  - 6559
+- page_index: 9
+  row: 2
+  col: 2
+  rect:
+  - 3235
+  - 4412
+  - 4705
+  - 6559
+- page_index: 10
+  row: 2
+  col: 1
+  rect:
+  - 1765
+  - 4412
+  - 3235
+  - 6559
+- page_index: 11
+  row: 2
+  col: 0
+  rect:
+  - 295
+  - 4412
+  - 1765
+  - 6559
+- page_index: 12
+  row: 3
+  col: 3
+  rect:
+  - 4705
+  - 6559
+  - 6178
+  - 8706
+- page_index: 13
+  row: 3
+  col: 2
+  rect:
+  - 3235
+  - 6559
+  - 4705
+  - 8706
+- page_index: 14
+  row: 3
+  col: 1
+  rect:
+  - 1765
+  - 6559
+  - 3235
+  - 8706
+- page_index: 15
+  row: 3
+  col: 0
+  rect:
+  - 295
+  - 6559
+  - 1765
+  - 8706

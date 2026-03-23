@@ -318,7 +318,7 @@ architect をスキップする場合:
 
 **Gate**: `implementation_gate`（全 Maturity で必須）
 
-### 7. テスト検証
+### 7. テスト検証（Verification）
 
 - `test-verifier` エージェントにテスト検証を依頼する（developer とは独立したコンテキスト）
 - test-verifier は以下を検証する:
@@ -334,7 +334,41 @@ architect をスキップする場合:
 
 **Gate**: `test_gate` — `gate-profiles.json` の `required` / `pass_rate` / `coverage_min` / `regression_required` に従う
 
-### 8. コードレビュー
+### 8. 妥当性確認（Validation）【スキップ不可・MUST】
+
+> ⛔ **このフェーズは Gate Profile の `required` 値に関わらず必ず実施する。**
+> `testing → reviewing` への直接遷移は禁止。必ず `testing → validating → reviewing` の経路を通ること。
+
+- Phase 7 完了後、**必ず別の `test-verifier` エージェント呼び出しで**妥当性確認を実施する
+  - Phase 7（テスト検証）と Phase 8（妥当性確認）は同一呼び出しにまとめてはならない
+  - 理由: テスト pass の確認と AC 充足の確認は独立した判断であり、混同を避ける
+- test-verifier は以下を実施する:
+  - `artifacts.validation_plan` が存在する場合: 各 AC に対してエビデンスを照合し充足を判定する
+  - `validation_plan` が存在しない場合: `artifacts.requirements` から AC を抽出して妥当性確認を実施する（不在を理由にスキップしてはならない）
+  - テスト結果、コードレビュー、手動確認などのエビデンスを組み合わせて判定する
+  - per-AC の充足状態（satisfied / not_satisfied / partial）をレポートする
+- test-verifier は Board の `artifacts.acceptance_validation` に妥当性確認結果を書き込む
+
+> ⛔ **MUST NOT**: `artifacts.acceptance_validation` が存在しない場合、または
+> `acceptance_validation.verdict` が `"validated"` でない場合、Phase 9 に遷移してはならない。
+
+- verdict が `not_validated` → `flow_state` を `implementing` にループバック。`developer` に未充足 AC を渡す
+- verdict が `partially_validated` → planner に許容判断を委ねる（ただし次フェーズへの遷移は planner の明示的な許可が必要）
+
+> **V字モデルとの対応**: 左辺（Phase 6）で test-designer が策定した validation_plan を、
+> 右辺（Phase 8）で test-verifier が実行する。これにより「テストが通った」だけでなく
+> 「要求が満たされた」ことを構造的に証明する。
+
+**Gate**: `validation_gate` — `required` 値に関わらず評価必須。`satisfaction_rate_min` を `acceptance_validation.satisfaction_summary.satisfaction_rate` と比較する
+
+### 9. コードレビュー
+
+> **前提条件**: Phase 9 を開始する前に以下を確認すること。
+>
+> - `artifacts.acceptance_validation` が存在すること
+> - `acceptance_validation.verdict` が `"validated"` であること
+>
+> これを満たさない場合は Phase 8 に戻すこと。
 
 - **レビュー準備（並列）**: `explore` エージェントを並列で起動し、変更差分のコンテキストと関連規約を収集する
 - `reviewer` エージェントにレビューを依頼する（`code-review` agent_type を使用）
@@ -347,7 +381,7 @@ architect をスキップする場合:
 
 - reviewer の verdict が `fix_required` → `flow_state` を `implementing` に戻す
 - `developer` に reviewer の `fix_instruction` を渡して修正を依頼
-- 修正 → test-verifier で再検証 → 再レビュー（Gate を再評価）
+- 修正 → test-verifier で再検証 → 妥当性確認 → 再レビュー（Gate を再評価）
 - `lgtm` で `approved` に遷移
 
 #### テスト不足時のループバック
@@ -356,7 +390,13 @@ architect をスキップする場合:
 - `developer` に test-verifier のフィードバック（missing TC、quality_issues）を渡して修正を依頼
 - test-verifier の verdict が `conditional_pass` → planner に許容判断を委ねる
 
-### 9. ドキュメント・ルール更新
+#### 妥当性確認不合格時のループバック
+
+- acceptance_validation の verdict が `not_validated` → `flow_state` を `implementing` に戻す
+- `developer` に未充足 AC の情報を渡して修正を依頼
+- acceptance_validation の verdict が `partially_validated` → planner に許容判断を委ねる
+
+### 10. ドキュメント・ルール更新
 
 - `writer` エージェントにドキュメント更新を依頼する
 - writer は Board の `artifacts.documentation` に更新ファイル一覧を書き込む
@@ -371,7 +411,7 @@ architect をスキップする場合:
 | 新規モジュール追加 | `docs/architecture/module-map.md` + 関連 ADR |
 | バグ修正のみ | 原則不要（挙動が変わる場合は該当ファイルを更新） |
 
-### 10. PR 提出 & マージ
+### 11. PR 提出 & マージ
 
 - `submit-pull-request` スキルに従い、コミット → プッシュ → PR 作成 → マージ
 - GitHub を使用しない場合はローカルで `git merge --no-ff` を実施する
@@ -382,7 +422,7 @@ architect をスキップする場合:
 
 **Gate**: `submit_gate`（全 Maturity で必須）
 
-### 11. クリーンアップ
+### 12. クリーンアップ
 
 - `cleanup-worktree` スキルに従い、worktree・ブランチを整理する
 - Issue トラッカー利用時: `rules/issue-tracker-workflow.md` に従い Done に更新
@@ -403,9 +443,10 @@ architect をスキップする場合:
 4. 計画策定                      → [plan_gate]
 5. 実装                          → [implementation_gate]
 6. テスト                        → [test_gate]
-7. コードレビュー                → [review_gate] → approved
+7. 妥当性確認                    → [validation_gate]
+8. コードレビュー                → [review_gate] → approved
    ── ここで終了 ──
-8. クリーンアップ（Board 破棄）  → worktree・ブランチ削除
+9. クリーンアップ（Board 破棄）  → worktree・ブランチ削除
 ```
 
 ### submit_gate の blocked 振る舞い

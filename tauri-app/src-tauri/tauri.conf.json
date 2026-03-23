@@ -1,0 +1,33 @@
+{
+  "productName": "CSP Name Splitter",
+  "version": "1.0.0",
+  "identifier": "com.csp.namesplitter",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "CSP Name Splitter",
+        "width": 1200,
+        "height": 850,
+        "resizable": true,
+        "minWidth": 960,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "icon": ["icons/icon.png"],
+    "externalBin": ["binaries/csp-bridge"]
+  },
+  "plugins": {}
+}

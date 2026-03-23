@@ -1,6 +1,11 @@
 ---
 name: submit-pull-request
-description: 変更をコミットし、PR を作成してマージする。worktree での変更が完了した後に使用する。
+description: >-
+  worktree での実装完了後に変更をコミット・PR 作成・マージまで一括実行する。「PR を作って」
+  「プルリクを出して」「変更をマージして」「コミットして PR を作って」「実装が終わった」
+  「レビューを通してマージして」と言った場合にトリガーする。
+  コミット→PR 作成→マージ→Board 更新の一連のフローを自動化する。
+  コンフリクト発生時は resolve-conflict スキルへ移行し、マージ後は cleanup-worktree で後片付けする。
 ---
 
 # PR 提出・マージ
@@ -20,6 +25,7 @@ description: 変更をコミットし、PR を作成してマージする。work
 ### 0. 設定読み込み
 
 `.github/settings.json` を読み取り、以下の値を使用する:
+
 - `github.owner` — GitHub リポジトリオーナー（以降 `<owner>` と表記）
 - `github.repo` — GitHub リポジトリ名（以降 `<repo>` と表記）
 - `github.mergeMethod` — マージ方式（以降 `<mergeMethod>` と表記）
@@ -44,6 +50,8 @@ git status --short
 | 未追跡ファイルがある | `git add` でステージするか、`.gitignore` に追加 |
 | ステージ済み未コミットの変更がある | 手順 1 のコミットで解消される |
 | Board の `flow_state` が `submitting` でない | Board を確認し、Gate を通過してから再実行 |
+| `artifacts.acceptance_validation` が存在しない | **中断** — Phase 8（妥当性確認）が完了していない。test-verifier に妥当性確認を実施させてから再実行 |
+| `acceptance_validation.verdict` が `"validated"` でない | **中断** — 受け入れ基準（AC）が充足されていない。未充足 AC を developer に渡して修正させること |
 
 > **Why**: 旧 stop_check Hook がセッション終了時に未コミットを検出していた。
 > **How**: PR 提出フローの入口でチェックすることで、同等の安全性を手続きとして確保する。
@@ -53,8 +61,23 @@ git status --short
 ```bash
 cd .worktrees/<ブランチ名>
 git add -A
-git commit -m "<type>: <説明> (<prefix>-<番号>)"
 ```
+
+コミットメッセージにセッション要約を含める（`rules/commit-message.md` のセッション要約フォーマットに従う）:
+
+```bash
+git commit -m "<type>: <説明> (<prefix>-<番号>)" -m "Session-Context: <セッション目的の1行要約>
+Changes-Made:
+- <変更1>
+- <変更2>
+Design-Decisions:
+- <設計判断（あれば）>
+
+Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+```
+
+> Session-Context と Changes-Made はセッション内の作業内容から自動生成する。
+> Design-Decisions は Board の history や artifacts から重要な判断を抽出する。
 
 ### 2. プッシュ
 
@@ -64,7 +87,7 @@ git push origin <フルブランチ名>
 
 ### 3. PR 作成
 
-```
+```text
 mcp_io_github_git_create_pull_request:
   owner: "<owner>"
   repo: "<repo>"
@@ -76,7 +99,7 @@ mcp_io_github_git_create_pull_request:
 
 ### 4. マージ
 
-```
+```text
 mcp_io_github_git_merge_pull_request:
   owner: "<owner>"
   repo: "<repo>"
