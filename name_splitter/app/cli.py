@@ -26,9 +26,10 @@ from name_splitter.core import (
 )
 from name_splitter.core.config import OutputConfig
 from name_splitter.app.cli_inspect import add_inspect_parser, run_inspect_subcommand
+from name_splitter.app.cli_plan import add_plan_parser, run_plan_subcommand
 
 # Subcommand names that trigger the extended parser path
-_SUBCOMMANDS: frozenset[str] = frozenset({"template", "batch", "inspect"})
+_SUBCOMMANDS: frozenset[str] = frozenset({"template", "batch", "inspect", "plan"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -126,6 +127,9 @@ def _build_subcommand_parser() -> argparse.ArgumentParser:
 
     # --- inspect subcommand ---
     add_inspect_parser(subparsers)
+
+    # --- plan subcommand ---
+    add_plan_parser(subparsers)
 
     return parser
 
@@ -284,6 +288,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_batch_subcommand(sub_args)
         if sub_args.subcommand == "inspect":
             return run_inspect_subcommand(sub_args)
+        if sub_args.subcommand == "plan":
+            return run_plan_subcommand(sub_args)
 
     # Default path: original image-split workflow (backward compatible)
     args = build_parser().parse_args(args_list)

@@ -264,6 +264,23 @@ python -m name_splitter.app.cli inspect page0001.clip --pixels
 python -m name_splitter.app.cli inspect 作品.cmc --output pages.json
 ```
 
+#### ネーム用紙の分割計画を確認する（開発中）
+
+`plan` サブコマンドは、ネーム用紙の .clip からページ枠（ベクターで描いた四角形）を見つけ、各ページに何が載るかを JSON で表示します。まだ .clip は書き出しません。
+
+```bash
+# ページ枠・ページ番号・各ページに載るレイヤーを表示し、確認用の画像も保存
+python -m name_splitter.app.cli plan ネーム用紙.clip --output plan.json --preview plan.png
+
+# 出力ページのキャンバスサイズ（px）と読み順、最初のページ番号を指定
+python -m name_splitter.app.cli plan ネーム用紙.clip --page-size 7016x9921 --order rtl_ttb --first-page 3
+```
+
+- 同じ大きさで繰り返し描かれた四角形をページ枠とみなします。中に枠が 2 つ並ぶ大きな四角形は見開きとして左右 2 ページに分けます
+- 見開きキャンバスの用紙は、右綴じ（`rtl_ttb`）なら右半分から読みます
+- 各ページ枠は、出力ページのキャンバスに縦横同じ倍率で拡大して中央に置きます
+- ラスターはページ枠で切り抜き、ベクターとテキストは座標を移します。ページ枠だけのレイヤー（テンプレート）は出力しません
+
 形式の詳細は [docs/formats/csp-file-format.md](docs/formats/csp-file-format.md) を参照してください。
 
 ### 設定ファイル
