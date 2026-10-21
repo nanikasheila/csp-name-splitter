@@ -27,6 +27,7 @@ from .offscreen import (
     BLOCK_SIZE,
     OffscreenParameters,
     decode_offscreen_image,
+    decode_offscreen_region,
     iter_block_records,
     parse_offscreen_attribute,
 )
@@ -146,6 +147,15 @@ class ClipDocument:
         """Return the offscreen geometry of a layer's render image."""
         attribute, _ = _base_offscreen(self.container, layer.render_mipmap)
         return None if attribute is None else parse_offscreen_attribute(attribute)
+
+    def layer_pixels_in_box(self, layer: ClipLayer, box: tuple[int, int, int, int]) -> Image.Image:
+        """Decode the layer's pixels inside a canvas box (transparent where none)."""
+        attribute, payload = _base_offscreen(self.container, layer.render_mipmap)
+        origin_x, origin_y = layer.pixel_origin
+        x0, y0, x1, y1 = box
+        if attribute is None:
+            return Image.new("RGBA", (max(x1 - x0, 1), max(y1 - y0, 1)), (0, 0, 0, 0))
+        return decode_offscreen_region(attribute, payload, (x0 - origin_x, y0 - origin_y, x1 - origin_x, y1 - origin_y))
 
     def occupied_pixel_boxes(self, layer: ClipLayer) -> list[tuple[int, int, int, int]]:
         """Return canvas boxes of the 256px blocks that store pixels.

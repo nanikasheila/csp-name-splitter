@@ -54,6 +54,7 @@ class PlannedContent:
     crop: Box | None = None
     items: tuple[int, ...] = ()
     whole_layer: bool = False
+    folder_ids: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -146,14 +147,14 @@ def _transform(cell: PageCell, plan: SheetPlan) -> CellTransform:
     return fit_cell(cell.rect, plan.page_width, plan.page_height)
 
 
-def _leaf_layers(layers: tuple[ClipLayer, ...], path: tuple[str, ...],
-                 visible: bool) -> list[tuple[ClipLayer, tuple[str, ...]]]:
-    result: list[tuple[ClipLayer, tuple[str, ...]]] = []
+def _leaf_layers(layers: tuple[ClipLayer, ...], path: tuple[ClipLayer, ...],
+                 visible: bool) -> list[tuple[ClipLayer, tuple[ClipLayer, ...]]]:
+    result: list[tuple[ClipLayer, tuple[ClipLayer, ...]]] = []
     for layer in layers:
         if layer.kind in ("paper", "story_info"):
             continue
         if layer.is_folder:
-            result.extend(_leaf_layers(layer.children, path + (layer.name,), visible and layer.visible))
+            result.extend(_leaf_layers(layer.children, path + (layer,), visible and layer.visible))
         elif visible and layer.visible:
             result.append((layer, path))
     return result
@@ -174,7 +175,7 @@ def _is_template_layer(document: ClipDocument, layer: ClipLayer, template: list[
     return True
 
 
-def _assign(document: ClipDocument, layer: ClipLayer, path: tuple[str, ...], cells: list[PageCell],
+def _assign(document: ClipDocument, layer: ClipLayer, path: tuple[ClipLayer, ...], cells: list[PageCell],
             warnings: list[str]) -> list[tuple[int, PlannedContent]]:
     if layer.kind == "raster":
         boxes = document.occupied_pixel_boxes(layer)
@@ -188,7 +189,7 @@ def _assign(document: ClipDocument, layer: ClipLayer, path: tuple[str, ...], cel
     return []
 
 
-def _assign_text(document: ClipDocument, layer: ClipLayer, path: tuple[str, ...], cells: list[PageCell],
+def _assign_text(document: ClipDocument, layer: ClipLayer, path: tuple[ClipLayer, ...], cells: list[PageCell],
                  warnings: list[str]) -> list[tuple[int, PlannedContent]]:
     balloons = [_offset_box(obj.bbox, layer) for obj in document.vector_objects(layer)]
     if not balloons:
@@ -201,14 +202,16 @@ def _assign_text(document: ClipDocument, layer: ClipLayer, path: tuple[str, ...]
     return [(index, _content(layer, path, whole_layer=True)) for index in touched]
 
 
-def _content(layer: ClipLayer, path: tuple[str, ...], *, crop: Box | None = None,
+def _content(layer: ClipLayer, path: tuple[ClipLayer, ...], *, crop: Box | None = None,
              items: tuple[int, ...] = (), whole_layer: bool = False) -> PlannedContent:
-    return PlannedContent(layer_id=layer.main_id, name=layer.name, kind=layer.kind, folder_path=path,
+    return PlannedContent(layer_id=layer.main_id, name=layer.name, kind=layer.kind,
+                          folder_path=tuple(folder.name for folder in path),
+                          folder_ids=tuple(folder.main_id for folder in path),
                           crop=crop, items=items, whole_layer=whole_layer)
 
 
 def _group_items(boxes: list[Box], cells: list[PageCell], layer: ClipLayer,
-                 path: tuple[str, ...]) -> list[tuple[int, PlannedContent]]:
+                 path: tuple[ClipLayer, ...]) -> list[tuple[int, PlannedContent]]:
     grouped: dict[int, list[int]] = {}
     for item, box in enumerate(boxes):
         for cell in cells:

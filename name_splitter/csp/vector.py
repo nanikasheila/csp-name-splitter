@@ -91,6 +91,17 @@ def transform_vector_data(payload: bytes, scale: float, dx: float, dy: float) ->
     return bytes(data)
 
 
+def select_vector_objects(payload: bytes, indexes: tuple[int, ...] | list[int]) -> bytes:
+    """Return a payload that keeps only the objects at ``indexes`` (in order)."""
+    spans = _iter_spans(payload)
+    keep = set(indexes)
+    body = b"".join(
+        payload[span.start:span.start + span.header_size + span.point_size * span.point_count]
+        for index, span in enumerate(spans) if index in keep
+    )
+    return PAYLOAD_HEAD.pack(0, len(body)) + body
+
+
 def _iter_spans(payload: bytes) -> list[_ObjectSpan]:
     if len(payload) < PAYLOAD_HEAD.size:
         raise CspFormatError("VectorData is too short")
