@@ -15,7 +15,7 @@ import sys
 from name_splitter.csp import CspFormatError, read_clip
 from name_splitter.csp.name_layout import ORDERS
 from name_splitter.csp.plan_report import plan_to_dict, render_plan_preview
-from name_splitter.csp.split_plan import plan_sheet
+from name_splitter.csp.split_plan import FITS, centered_trim, plan_sheet
 
 
 def add_plan_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -28,6 +28,15 @@ def add_plan_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument(
         "--page-size", metavar="WxH",
         help="Output page canvas in px (default: the sheet's single-page size)",
+    )
+    parser.add_argument(
+        "--fit", choices=FITS, default="frame",
+        help="frame: put each cell's inner frame on the page's trim frame (default); "
+             "cell: fit the whole cell into the page canvas",
+    )
+    parser.add_argument(
+        "--trim-size", metavar="WxH",
+        help="Trim frame of the output page in px, centred (default: the sheet's trim frame setting)",
     )
     parser.add_argument("--order", choices=ORDERS, default="rtl_ttb", help="Reading order of the cells")
     parser.add_argument("--first-page", type=int, default=1, help="Page number of the first cell")
@@ -47,9 +56,12 @@ def run_plan_subcommand(args: argparse.Namespace) -> int:
         return 2
     try:
         document = read_clip(input_path)
-        width, height = _page_size(args.page_size, document.canvas.single_page_width_px,
-                                   document.canvas.height_px)
-        plan = plan_sheet(document, width, height, order=args.order, first_page=args.first_page)
+        width, height = _size_option(args.page_size, "--page-size") or (
+            document.canvas.single_page_width_px, document.canvas.height_px)
+        trim_size = _size_option(args.trim_size, "--trim-size") or document.canvas.crop_size_px
+        trim = centered_trim(width, height, *trim_size) if trim_size else None
+        plan = plan_sheet(document, width, height, order=args.order, first_page=args.first_page,
+                          fit=args.fit, trim=trim)
     except ValueError as exc:  # CspFormatError is a ValueError too
         label = "Format error" if isinstance(exc, CspFormatError) else "Invalid option"
         print(f"{label}: {exc}", file=sys.stderr)
@@ -68,13 +80,13 @@ def run_plan_subcommand(args: argparse.Namespace) -> int:
     return 0
 
 
-def _page_size(option: str | None, page_width: int, page_height: int) -> tuple[int, int]:
-    if option:
-        parts = option.lower().split("x")
-        if len(parts) != 2 or not all(part.strip().isdigit() for part in parts):
-            raise ValueError(f"--page-size must look like 7016x9921, got {option!r}")
-        width, height = (int(part) for part in parts)
-        if width <= 0 or height <= 0:
-            raise ValueError("--page-size must be positive")
-        return width, height
-    return page_width, page_height
+def _size_option(option: str | None, name: str) -> tuple[int, int] | None:
+    if not option:
+        return None
+    parts = option.lower().split("x")
+    if len(parts) != 2 or not all(part.strip().isdigit() for part in parts):
+        raise ValueError(f"{name} must look like 7016x9921, got {option!r}")
+    width, height = (int(part) for part in parts)
+    if width <= 0 or height <= 0:
+        raise ValueError(f"{name} must be positive")
+    return width, height

@@ -5,8 +5,9 @@ Why: Stage 2 of the rebuild. Before writing any .clip, we decide for every
      coordinates map from the sheet to the page canvas. Keeping this as a
      plain data plan makes it testable and lets the user check it (JSON and
      a preview image) before files are generated.
-How: Page cells come from :mod:`name_layout`. Each cell is fitted into the
-     page canvas with one uniform scale, centred. Contents are assigned by
+How: Page cells come from :mod:`name_layout`. By default each cell's inner
+     frame is scaled uniformly onto the page's trim frame (仕上がり線), centred;
+     ``fit="cell"`` fits the whole cell into the canvas instead. Contents are assigned by
      where they are on the sheet:
 
      - raster layers: every cell that one of their stored 256px blocks
@@ -26,6 +27,7 @@ from .clip_reader import ClipDocument, ClipLayer
 from .name_layout import PageCell, Rect, as_rectangle, detect_page_cells, find_rectangles, template_rectangles
 
 Box = tuple[float, float, float, float]
+FITS = ("frame", "cell")
 
 
 @dataclass(frozen=True)
@@ -67,6 +69,8 @@ class SheetPlan:
     page_width: int
     page_height: int
     pages: list[PlannedPage]
+    fit: str = "frame"
+    trim: Rect | None = None
     template_layer_ids: list[int] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -79,13 +83,41 @@ def fit_cell(cell: Rect, page_width: int, page_height: int) -> CellTransform:
     return CellTransform(scale=scale, dx=dx, dy=dy)
 
 
+def fit_frame(frame: Rect, trim: Rect) -> CellTransform:
+    """Uniformly scale a cell's inner ``frame`` onto the page's ``trim`` frame, centred.
+
+    Why: The inner frame of a name template stands for the finished page
+         (仕上がり), so it should land on the trim line of the real page.
+    """
+    scale = min(trim.width / frame.width, trim.height / frame.height)
+    frame_x, frame_y = frame.center
+    trim_x, trim_y = trim.center
+    return CellTransform(scale=scale, dx=trim_x - frame_x * scale, dy=trim_y - frame_y * scale)
+
+
+def centered_trim(page_width: int, page_height: int, trim_width: int, trim_height: int) -> Rect:
+    """The trim frame of a page, centred on the canvas (CSP's default placement)."""
+    x0, y0 = (page_width - trim_width) / 2, (page_height - trim_height) / 2
+    return Rect(x0, y0, x0 + trim_width, y0 + trim_height)
+
+
 def plan_sheet(document: ClipDocument, page_width: int, page_height: int, *,
-               order: str = "rtl_ttb", first_page: int = 1) -> SheetPlan:
-    """Build the split plan of one name sheet."""
+               order: str = "rtl_ttb", first_page: int = 1, fit: str = "frame",
+               trim: Rect | None = None) -> SheetPlan:
+    """Build the split plan of one name sheet.
+
+    ``fit="frame"`` maps each cell's inner frame onto ``trim`` (cells without
+    an inner frame fall back to ``fit="cell"``); ``fit="cell"`` fits the whole
+    cell into the page canvas.
+    """
+    if fit not in FITS:
+        raise ValueError(f"Unknown fit: {fit}")
     rects = find_rectangles(document)
     cells = detect_page_cells(rects, document.canvas.width_px,
                               double_page=document.canvas.is_double_page, order=order)
-    plan = SheetPlan(page_width=page_width, page_height=page_height, pages=[])
+    plan = SheetPlan(page_width=page_width, page_height=page_height, pages=[], fit=fit, trim=trim)
+    if fit == "frame" and trim is None:
+        plan.warnings.append("No trim frame size known: cells are fitted to the whole page instead")
     if not cells:
         plan.warnings.append("No page cells found: the sheet has no repeated vector rectangles")
         return plan
@@ -100,10 +132,18 @@ def plan_sheet(document: ClipDocument, page_width: int, page_height: int, *,
     for cell in cells:
         plan.pages.append(PlannedPage(
             number=first_page + cell.index - 1, cell=cell,
-            transform=fit_cell(cell.rect, page_width, page_height),
+            transform=_transform(cell, plan),
             contents=tuple(per_cell[cell.index]),
         ))
+    if fit == "frame" and trim is not None and any(cell.frame is None for cell in cells):
+        plan.warnings.append("Some cells have no inner frame: they are fitted to the whole page instead")
     return plan
+
+
+def _transform(cell: PageCell, plan: SheetPlan) -> CellTransform:
+    if plan.fit == "frame" and plan.trim is not None and cell.frame is not None:
+        return fit_frame(cell.frame, plan.trim)
+    return fit_cell(cell.rect, plan.page_width, plan.page_height)
 
 
 def _leaf_layers(layers: tuple[ClipLayer, ...], path: tuple[str, ...],

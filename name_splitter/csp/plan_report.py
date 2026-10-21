@@ -25,6 +25,8 @@ def plan_to_dict(plan: SheetPlan, document: ClipDocument) -> dict[str, Any]:
         "sheet": str(document.path),
         "sheet_size_px": [document.canvas.width_px, document.canvas.height_px],
         "page_size_px": [plan.page_width, plan.page_height],
+        "fit": plan.fit,
+        "trim_px": plan.trim.as_list() if plan.trim else None,
         "template_layer_ids": plan.template_layer_ids,
         "warnings": plan.warnings,
         "pages": [
