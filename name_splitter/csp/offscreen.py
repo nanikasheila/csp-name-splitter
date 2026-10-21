@@ -106,8 +106,12 @@ def parse_offscreen_attribute(attribute: bytes) -> OffscreenParameters:
     return parameters
 
 
-def iter_pixel_blocks(payload: bytes) -> Iterator[PixelBlock]:
-    """Yield the blocks that carry data from an external chunk payload."""
+def iter_block_records(payload: bytes) -> Iterator[tuple[int, int, bytes | None]]:
+    """Yield ``(block_index, raw_size, zlib data or None)`` for every block record.
+
+    Nothing is decompressed, so this is cheap enough to find which blocks of
+    a large name sheet hold pixels.
+    """
     position = PAYLOAD_HEADER_SIZE
     while position + 8 <= len(payload):
         record_length = _read_u32(payload, position)
@@ -120,20 +124,26 @@ def iter_pixel_blocks(payload: bytes) -> Iterator[PixelBlock]:
             break
         block_index = _read_u32(payload, body)
         raw_size = _read_u32(payload, body + 4)
-        has_data = _read_u32(payload, body + 16)
-        if has_data:
+        compressed = None
+        if _read_u32(payload, body + 16):
             data_length = _read_u32(payload, body + 20)
             compressed = payload[body + 28:body + 24 + data_length]
-            try:
-                raw = zlib.decompress(compressed)
-            except zlib.error as exc:
-                raise CspFormatError(f"Block {block_index} is not valid zlib data") from exc
-            if len(raw) != raw_size:
-                raise CspFormatError(
-                    f"Block {block_index} size mismatch: {len(raw)} != {raw_size}"
-                )
-            yield PixelBlock(index=block_index, raw=raw)
+        yield block_index, raw_size, compressed
         position += record_length
+
+
+def iter_pixel_blocks(payload: bytes) -> Iterator[PixelBlock]:
+    """Yield the blocks that carry data from an external chunk payload."""
+    for block_index, raw_size, compressed in iter_block_records(payload):
+        if compressed is None:
+            continue
+        try:
+            raw = zlib.decompress(compressed)
+        except zlib.error as exc:
+            raise CspFormatError(f"Block {block_index} is not valid zlib data") from exc
+        if len(raw) != raw_size:
+            raise CspFormatError(f"Block {block_index} size mismatch: {len(raw)} != {raw_size}")
+        yield PixelBlock(index=block_index, raw=raw)
 
 
 def _block_to_image(raw: bytes, parameters: OffscreenParameters) -> Image.Image:

@@ -34,6 +34,49 @@ class FixtureLayer:
     image: Image.Image | None = None
     gray: bool = False
     children: list["FixtureLayer"] = field(default_factory=list)
+    vector_objects: list[tuple[int, list[tuple[float, float]]]] | None = None
+    text_attributes: bytes | None = None
+    text_attribute_array: list[bytes] | None = None
+
+
+VECTOR_HEADER_SIZE = 92
+VECTOR_POINT_SIZE = 88
+CLOSED = 0x1111
+OPEN = 0x11
+
+
+def build_vector_payload(objects: list[tuple[int, list[tuple[float, float]]]]) -> bytes:
+    """Encode ``(flags, points)`` objects in the observed VectorData layout."""
+    body = b""
+    for flags, points in objects:
+        xs = [point[0] for point in points]
+        ys = [point[1] for point in points]
+        bbox = (int(min(xs)) - 2, int(min(ys)) - 2, int(max(xs)) + 2, int(max(ys)) + 2)
+        header = struct.pack(">6I4i", VECTOR_HEADER_SIZE, 76, VECTOR_POINT_SIZE, VECTOR_POINT_SIZE,
+                             len(points), flags, *bbox)
+        body += header.ljust(VECTOR_HEADER_SIZE, b"\0")
+        for x, y in points:
+            point = struct.pack(">2d4i", x, y, int(x) - 2, int(y) - 2, int(x) + 2, int(y) + 2)
+            body += point.ljust(VECTOR_POINT_SIZE, b"\0")
+    return struct.pack(">II", 0, len(body)) + body
+
+
+def rectangle(x0: float, y0: float, x1: float, y1: float) -> tuple[int, list[tuple[float, float]]]:
+    return CLOSED, [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+
+
+def build_text_attributes(bbox: tuple[int, int, int, int], font_size_pt: float = 12.0,
+                          font_name: str = "Font") -> bytes:
+    """Encode the TLV attributes the text reader decodes (plus one unknown id)."""
+    name = font_name.encode("utf-8")
+    items = [
+        (0x0B, b"\x01\x02"),
+        (0x20, struct.pack("<i", round(font_size_pt * 100))),
+        (0x2A, struct.pack("<4i", *bbox)),
+        (0x39, struct.pack("<HH", 1, len(name)) + name + struct.pack("<H", 0)),
+        (0x3F, struct.pack("<2i", bbox[2] - bbox[0], bbox[3] - bbox[1])),
+    ]
+    return b"".join(struct.pack("<II", key, len(value)) + value for key, value in items)
 
 
 def _utf16_name(name: str) -> bytes:
@@ -91,7 +134,8 @@ def _flatten(layers: list[FixtureLayer]) -> list[FixtureLayer]:
     return result
 
 
-def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], preview: bool = True) -> Path:
+def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], preview: bool = True,
+               double_page: bool = False) -> Path:
     """Write a minimal .clip file whose root folder contains ``layers``."""
     root = FixtureLayer(main_id=1, name="", layer_type=256, folder=1, children=layers)
     database = sqlite3.connect(":memory:")
@@ -101,15 +145,16 @@ def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], 
         "CREATE TABLE Layer(MainId, LayerName, LayerType, LayerFolder, LayerVisibility, LayerOpacity,"
         " LayerComposite, LayerOffsetX, LayerOffsetY, LayerClip, LayerLock, LayerNextIndex,"
         " LayerFirstChildIndex, LayerRenderMipmap, LayerLayerMaskMipmap, TextLayerString,"
-        " ComicFrameLineMipmap);"
+        " ComicFrameLineMipmap, TextLayerAttributes, TextLayerAttributesArray,"
+        " LayerRenderOffscrOffsetX, LayerRenderOffscrOffsetY);"
         "CREATE TABLE Mipmap(MainId, BaseMipmapInfo);"
         "CREATE TABLE MipmapInfo(MainId, Offscreen);"
         "CREATE TABLE Offscreen(MainId, Attribute, BlockData);"
         "CREATE TABLE ExternalChunk(ExternalID, Offset);"
         "CREATE TABLE CanvasPreview(ImageData);"
-        "CREATE TABLE VectorObjectList(LayerId);"
+        "CREATE TABLE VectorObjectList(MainId, LayerId, VectorData);"
     )
-    database.execute("INSERT INTO Canvas VALUES(1, 0, ?, ?, 350.0, 1, 0)", (width, height))
+    database.execute("INSERT INTO Canvas VALUES(1, 0, ?, ?, 350.0, 1, ?)", (width, height, int(double_page)))
     externals: list[tuple[str, bytes]] = []
     all_layers = [root] + _flatten(layers)
     for position, layer in enumerate(all_layers):
@@ -131,19 +176,34 @@ def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], 
             )
             externals.append((external_id, build_block_payload(layer.image, layer.gray)))
         database.execute(
-            "INSERT INTO Layer VALUES(?,?,?,?,?,?,0,?,?,0,0,?,?,?,0,?,?)",
+            "INSERT INTO Layer VALUES(?,?,?,?,?,?,0,?,?,0,0,?,?,?,0,?,?,?,?,0,0)",
             (
                 layer.main_id, layer.name, layer.layer_type, layer.folder, layer.visibility,
                 layer.opacity, layer.offset[0], layer.offset[1], next_id, first_child, mipmap,
                 layer.text.encode("utf-8") if layer.text is not None else None,
                 99 if layer.is_frame else None,
+                layer.text_attributes,
+                _attribute_array(layer.text_attribute_array),
             ),
         )
-        if layer.is_vector:
-            database.execute("INSERT INTO VectorObjectList VALUES(?)", (layer.main_id,))
+        if layer.is_vector or layer.vector_objects is not None:
+            vector_id = None
+            if layer.vector_objects is not None:
+                vector_id = f"extrnlidV{position:031X}"
+                externals.append((vector_id, build_vector_payload(layer.vector_objects)))
+            database.execute(
+                "INSERT INTO VectorObjectList VALUES(?, ?, ?)",
+                (layer.main_id, layer.main_id, vector_id.encode() if vector_id else None),
+            )
     if preview:
         database.execute("INSERT INTO CanvasPreview VALUES(?)", (b"\x89PNG fake",),)
     return _write_container(path, database, externals)
+
+
+def _attribute_array(blocks: list[bytes] | None) -> bytes | None:
+    if blocks is None:
+        return None
+    return b"".join(struct.pack("<I", len(block)) + block for block in blocks)
 
 
 def _siblings_of(root: FixtureLayer, target: FixtureLayer) -> list[FixtureLayer] | None:

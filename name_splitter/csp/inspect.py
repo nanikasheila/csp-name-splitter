@@ -60,6 +60,19 @@ def _layer_summary(document: ClipDocument, layer: ClipLayer, include_pixels: boo
     }
     if layer.text is not None:
         summary["text"] = layer.text[:TEXT_PREVIEW_LENGTH]
+    if layer.kind == "vector":
+        objects = document.vector_objects(layer)
+        summary["vector"] = {
+            "objects": len(objects),
+            "closed": sum(1 for obj in objects if obj.closed),
+            "bbox": _shift(_union([obj.bbox for obj in objects]), layer),
+        }
+    blocks = document.text_blocks(layer)
+    if blocks:
+        summary["text_blocks"] = [
+            {"bbox": _shift(block.bbox, layer), "font_size_pt": block.font_size_pt, "font_name": block.font_name}
+            for block in blocks
+        ]
     if include_pixels and not layer.is_folder:
         image = document.render_layer_pixels(layer)
         summary["stored_pixels"] = None if image is None else {
@@ -69,3 +82,19 @@ def _layer_summary(document: ClipDocument, layer: ClipLayer, include_pixels: boo
     if layer.children:
         summary["children"] = [_layer_summary(document, child, include_pixels) for child in layer.children]
     return summary
+
+
+def _union(boxes: list[tuple[int, int, int, int]]) -> tuple[int, int, int, int] | None:
+    if not boxes:
+        return None
+    return (
+        min(box[0] for box in boxes), min(box[1] for box in boxes),
+        max(box[2] for box in boxes), max(box[3] for box in boxes),
+    )
+
+
+def _shift(box: tuple[int, int, int, int] | None, layer: ClipLayer) -> list[int] | None:
+    """Convert a layer-local box to canvas pixels by adding the layer offset."""
+    if box is None:
+        return None
+    return [box[0] + layer.offset_x, box[1] + layer.offset_y, box[2] + layer.offset_x, box[3] + layer.offset_y]

@@ -23,7 +23,15 @@ from PIL import Image
 
 from .container import CsfContainer, open_sqlite_bytes, read_csf_container
 from .errors import CspFormatError
-from .offscreen import OffscreenParameters, decode_offscreen_image, parse_offscreen_attribute
+from .offscreen import (
+    BLOCK_SIZE,
+    OffscreenParameters,
+    decode_offscreen_image,
+    iter_block_records,
+    parse_offscreen_attribute,
+)
+from .text_attributes import TextAttributes, parse_text_attributes, split_attribute_array
+from .vector import VectorObject, parse_vector_data
 
 LAYER_TYPE_RASTER = 1
 LAYER_TYPE_ROOT = 256
@@ -49,6 +57,13 @@ class ClipCanvas:
     height_px: int
     is_double_page: bool
 
+    @property
+    def single_page_width_px(self) -> int:
+        """Width of one page in pixels (half the canvas for a double page)."""
+        if not self.is_double_page:
+            return self.width_px
+        return _to_pixels(self.width / 2, self.unit, self.resolution)
+
 
 @dataclass(frozen=True)
 class ClipLayer:
@@ -70,10 +85,22 @@ class ClipLayer:
     mask_mipmap: int
     text: str | None = None
     children: tuple["ClipLayer", ...] = field(default=())
+    render_offset_x: int = 0
+    render_offset_y: int = 0
 
     @property
     def is_folder(self) -> bool:
         return self.kind in ("folder", "frame_folder", "root")
+
+    @property
+    def pixel_origin(self) -> tuple[int, int]:
+        """Canvas position of the stored pixels' top-left corner.
+
+        Observed: ``LayerRenderOffscrOffset`` is usually ``-LayerOffset`` (the
+        pixels are stored in canvas coordinates); layers with an enlarged
+        offscreen differ by whole blocks. The sum gives the origin.
+        """
+        return (self.offset_x + self.render_offset_x, self.offset_y + self.render_offset_y)
 
 
 @dataclass(frozen=True)
@@ -119,6 +146,66 @@ class ClipDocument:
         attribute, _ = _base_offscreen(self.container, layer.render_mipmap)
         return None if attribute is None else parse_offscreen_attribute(attribute)
 
+    def occupied_pixel_boxes(self, layer: ClipLayer) -> list[tuple[int, int, int, int]]:
+        """Return canvas boxes of the 256px blocks that store pixels.
+
+        Why: Deciding which page cell a raster layer touches must not decode
+             a whole name sheet (14031x9921 RGBA is over 500 MB).
+        """
+        attribute, payload = _base_offscreen(self.container, layer.render_mipmap)
+        if attribute is None or payload is None:
+            return []
+        parameters = parse_offscreen_attribute(attribute)
+        origin_x, origin_y = layer.pixel_origin
+        boxes = []
+        for index, _, compressed in iter_block_records(payload):
+            if compressed is None:
+                continue
+            row, column = divmod(index, parameters.blocks_x)
+            x0, y0 = origin_x + column * BLOCK_SIZE, origin_y + row * BLOCK_SIZE
+            boxes.append((x0, y0, x0 + BLOCK_SIZE, y0 + BLOCK_SIZE))
+        return boxes
+
+    def vector_payloads(self, layer: ClipLayer) -> list[bytes]:
+        """Return the raw ``VectorData`` payloads of a vector layer or of a
+        text layer's balloons."""
+        if layer.kind not in ("vector", "text"):
+            return []
+        rows = _query(self.container, "SELECT VectorData FROM VectorObjectList WHERE LayerId = ?", (layer.main_id,))
+        payloads = []
+        for (external_id,) in rows:
+            if not isinstance(external_id, bytes):
+                continue
+            payload = self.container.external_payload(external_id.decode("ascii"))
+            if payload:
+                payloads.append(payload)
+        return payloads
+
+    def vector_objects(self, layer: ClipLayer) -> list[VectorObject]:
+        """Decode the vector objects of a layer (layer-local coordinates)."""
+        return [obj for payload in self.vector_payloads(layer) for obj in parse_vector_data(payload)]
+
+    def text_blocks(self, layer: ClipLayer) -> list[TextAttributes]:
+        """Decode the text blocks of a text layer.
+
+        The first entry is ``TextLayerAttributes``; layers with several
+        blocks (balloons) add one entry per ``TextLayerAttributesArray`` item.
+        """
+        if layer.kind not in ("text", "story_info"):
+            return []
+        # Columns are created on demand by CSP, so select * and look them up.
+        connection = open_sqlite_bytes(self.container.sqlite_bytes)
+        try:
+            row = connection.execute("SELECT * FROM Layer WHERE MainId = ?", (layer.main_id,)).fetchone()
+        finally:
+            connection.close()
+        attributes = _optional(row, "TextLayerAttributes") if row is not None else None
+        if not isinstance(attributes, bytes):
+            return []
+        array = _optional(row, "TextLayerAttributesArray")
+        blobs = [attributes] + (split_attribute_array(array) if isinstance(array, bytes) else [])
+        return [parse_text_attributes(blob) for blob in blobs]
+
 
 def read_clip(path: str | Path) -> ClipDocument:
     """Read a .clip file's canvas, layer tree and preview image."""
@@ -161,6 +248,10 @@ def _to_pixels(value: float, unit: str, resolution: float) -> int:
 
 def _optional(row: sqlite3.Row, column: str) -> object | None:
     return row[column] if column in row.keys() else None
+
+
+def _optional_int(row: sqlite3.Row, column: str) -> int:
+    return int(row[column] or 0) if column in row.keys() else 0
 
 
 def _classify_layer(row: sqlite3.Row, vector_layer_ids: set[int]) -> str:
@@ -228,6 +319,8 @@ def _build_layer_tree(connection: sqlite3.Connection, root_id: int) -> ClipLayer
             mask_mipmap=int(row["LayerLayerMaskMipmap"] or 0),
             text=_decode_text(_optional(row, "TextLayerString")),
             children=tuple(children),
+            render_offset_x=_optional_int(row, "LayerRenderOffscrOffsetX"),
+            render_offset_y=_optional_int(row, "LayerRenderOffscrOffsetY"),
         )
 
     return build(root_id, 0, {root_id})
@@ -236,6 +329,14 @@ def _build_layer_tree(connection: sqlite3.Connection, root_id: int) -> ClipLayer
 def _read_preview(connection: sqlite3.Connection) -> bytes | None:
     row = connection.execute("SELECT ImageData FROM CanvasPreview LIMIT 1").fetchone()
     return bytes(row[0]) if row and row[0] else None
+
+
+def _query(container: CsfContainer, sql: str, params: tuple[object, ...]) -> list[tuple[object, ...]]:
+    connection = open_sqlite_bytes(container.sqlite_bytes)
+    try:
+        return [tuple(row) for row in connection.execute(sql, params)]
+    finally:
+        connection.close()
 
 
 def _base_offscreen(container: CsfContainer, mipmap_id: int) -> tuple[bytes | None, bytes | None]:
