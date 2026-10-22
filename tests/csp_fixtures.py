@@ -211,6 +211,11 @@ def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], 
         database.execute("INSERT INTO CanvasPreview VALUES(?)", (b"\x89PNG fake",),)
     if editable:
         _add_editing_schema(database)
+        if double_page:  # CSP adds these for the second page's story info on spreads only
+            database.executescript(
+                "ALTER TABLE Canvas ADD COLUMN ComicStoryRightLayerCreated;"
+                "ALTER TABLE Canvas ADD COLUMN ComicNombreRightLayerCreated;"
+                "UPDATE Canvas SET ComicStoryRightLayerCreated = 1, ComicNombreRightLayerCreated = 1;")
     return _write_container(path, database, externals)
 
 

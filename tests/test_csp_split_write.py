@@ -201,6 +201,12 @@ def test_split_cli_writes_work(tmp_path: Path, sheet_path: Path, template_path: 
              for (uuid,) in open_sqlite_bytes(container.sqlite_bytes).execute("SELECT LayerUuid FROM Layer")
              if uuid]
     assert len(uuids) == len(set(uuids)) > 4
+    # Pages keep the template's Canvas columns: spread-only columns from the sheet would
+    # make CSP rebuild the story info of right-hand pages on open.
+    for page in project.pages:
+        columns = {row[1] for row in open_sqlite_bytes(read_csf_container(out / page.file_name).sqlite_bytes)
+                   .execute("PRAGMA table_info(Canvas)")}
+        assert "ComicStoryRightLayerCreated" not in columns
     # Story info comes from the work's .cmc, not from the template page.
     assert _canvas_value(out / "page0001.clip", "ComicStoryStoryName") == "Story"
     # --story-index overrides the episode number in the work and every page.

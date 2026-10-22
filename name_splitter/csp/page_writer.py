@@ -29,7 +29,9 @@ from .split_plan import CellTransform, PlannedContent, PlannedPage
 from .text_attributes import build_tlv, parse_tlv, split_attribute_array, transform_text_attributes
 from .vector import select_vector_objects, transform_vector_data
 
-SCHEMA_TABLES = ("Layer", "Canvas", "VectorObjectList", "BrushStyleManager", "BrushStyle")
+# Not Canvas: a spread sheet has ComicStory/NombreRightLayerCreated columns, and a single right
+# page that has them (as NULL) makes CSP rebuild its story info layers and mark the page modified.
+SCHEMA_TABLES = ("Layer", "VectorObjectList", "BrushStyleManager", "BrushStyle")
 # Vector objects refer to brush styles by id, so these rows keep their ids.
 SHARED_TABLES = ("BrushStyleManager", "BrushStyle")
 TEXT_BLOBS = ("TextLayerAttributes",)
