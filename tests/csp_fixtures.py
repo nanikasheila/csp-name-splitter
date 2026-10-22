@@ -216,6 +216,11 @@ def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], 
                 "ALTER TABLE Canvas ADD COLUMN ComicStoryRightLayerCreated;"
                 "ALTER TABLE Canvas ADD COLUMN ComicNombreRightLayerCreated;"
                 "UPDATE Canvas SET ComicStoryRightLayerCreated = 1, ComicNombreRightLayerCreated = 1;")
+            # Pages saved by newer CSP link their brush styles; vector layers need this column.
+            database.executescript(
+                "ALTER TABLE Canvas ADD COLUMN BrushStyleManager;"
+                "UPDATE Canvas SET BrushStyleManager = 8;"
+                "INSERT INTO ParamScheme VALUES('Canvas', 'BrushStyleManager', 'BrushStyleManager', 0);")
     return _write_container(path, database, externals)
 
 

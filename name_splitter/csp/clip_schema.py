@@ -61,8 +61,12 @@ def external_columns(database: sqlite3.Connection) -> set[tuple[str, str]]:
             for table, column in database.execute("SELECT TableName, ColumnName FROM ExternalTableAndColumnName")}
 
 
-def merge_schema(target: sqlite3.Connection, source: sqlite3.Connection, tables: list[str]) -> None:
-    """Give ``target`` every table / column of ``tables`` that ``source`` has."""
+def merge_schema(target: sqlite3.Connection, source: sqlite3.Connection, tables: list[str],
+                 columns: set[str] | None = None) -> None:
+    """Give ``target`` every table / column of ``tables`` that ``source`` has.
+
+    With ``columns``, only those columns are added to tables ``target`` already has.
+    """
     existing = table_names(target)
     for table in tables:
         if table not in table_names(source):
@@ -76,7 +80,7 @@ def merge_schema(target: sqlite3.Connection, source: sqlite3.Connection, tables:
             continue
         have = set(column_names(target, table))
         for _, name, declared_type, _, default, _ in source.execute(f'PRAGMA table_info("{table}")'):
-            if name in have:
+            if name in have or (columns is not None and name not in columns):
                 continue
             definition = f'"{name}" {declared_type}'
             if default is not None:
