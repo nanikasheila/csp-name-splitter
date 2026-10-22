@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 import io
 import math
 from pathlib import Path
+import re
 import sqlite3
 import struct
 
@@ -25,7 +26,7 @@ from .clip_schema import column_names, merge_schema, table_names
 from .container import open_sqlite_bytes
 from .errors import CspFormatError
 from .split_plan import CellTransform, PlannedContent, PlannedPage
-from .text_attributes import split_attribute_array, transform_text_attributes
+from .text_attributes import build_tlv, parse_tlv, split_attribute_array, transform_text_attributes
 from .vector import select_vector_objects, transform_vector_data
 
 SCHEMA_TABLES = ("Layer", "Canvas", "VectorObjectList", "BrushStyleManager", "BrushStyle")
@@ -34,6 +35,7 @@ SHARED_TABLES = ("BrushStyleManager", "BrushStyle")
 TEXT_BLOBS = ("TextLayerAttributes",)
 TEXT_ARRAYS = ("TextLayerAttributesArray", "TextLayerAddAttributesV01")
 PAGE_COLUMNS = ("ComicPageIndex", "ComicIsLeftPage")
+RUN_TAG = 0x0B  # style runs of a text: u32 count, then (u32 start, u32 length, ...)
 
 
 @dataclass
@@ -55,7 +57,11 @@ def write_page(template: str | Path, sheet: ClipDocument, page: PlannedPage, out
     editor = ClipEditor(template)
     _set_page_index(editor.db, page.number - 1 if page_index is None else page_index)
     if canvas_values:
+        old_index = _canvas_value(editor.db, "ComicStoryStoryIndex")
         _set_canvas_values(editor.db, canvas_values)
+        new_index = canvas_values.get("ComicStoryStoryIndex")
+        if isinstance(old_index, int) and isinstance(new_index, int) and old_index != new_index:
+            _replace_story_index(editor.db, old_index, new_index)
     source = open_sqlite_bytes(sheet.container.sqlite_bytes)
     merge_schema(editor.db, source, list(SCHEMA_TABLES))
     _share_rows(editor.db, source)
@@ -150,6 +156,52 @@ def _set_canvas_values(db: sqlite3.Connection, values: dict[str, object]) -> Non
     for column, value in values.items():
         if column in known:
             db.execute(f'UPDATE Canvas SET "{column}" = ?', (value,))
+
+
+def _canvas_value(db: sqlite3.Connection, column: str) -> object | None:
+    if column not in column_names(db, "Canvas"):
+        return None
+    value: object = db.execute(f'SELECT "{column}" FROM Canvas').fetchone()[0]
+    return value
+
+
+def _replace_story_index(db: sqlite3.Connection, old: int, new: int) -> None:
+    """Change the episode number written in the template's 作品情報 text layer.
+
+    Why: CSP shows the text stored in the story info layer (for example
+         "ユメノストラ 3話") rather than rebuilding it from the Canvas settings,
+         so a template from another episode keeps showing that episode.
+    How: Replaces "<old>話" with "<new>話" in ``TextLayerString`` and moves
+         the character count of its single style run (TLV 0x0b, u32 run
+         count, u32 start, u32 length, ...) by the change in length.
+    """
+    if "ComicStoryInfoType" not in column_names(db, "Layer"):
+        return
+    rows = db.execute("SELECT MainId, TextLayerString, TextLayerAttributes FROM Layer "
+                      "WHERE ComicStoryInfoType = 1").fetchall()
+    for layer_id, string, attributes in rows:
+        if not isinstance(string, bytes):
+            continue
+        text = string.decode("utf-8")
+        changed = re.sub(rf"(?<!\d){old}話", f"{new}話", text)
+        if changed == text:
+            continue
+        values: dict[str, object] = {"TextLayerString": changed.encode("utf-8")}
+        if isinstance(attributes, bytes):
+            values["TextLayerAttributes"] = _move_run_length(attributes, len(changed) - len(text))
+        for column, value in values.items():
+            db.execute(f'UPDATE Layer SET "{column}" = ? WHERE MainId = ?', (value, layer_id))
+
+
+def _move_run_length(blob: bytes, delta: int) -> bytes:
+    if not delta:
+        return blob
+    items = parse_tlv(blob)
+    for position, (tag, value) in enumerate(items):
+        if tag == RUN_TAG and len(value) >= 12 and struct.unpack_from("<I", value, 0)[0] == 1:
+            length = struct.unpack_from("<I", value, 8)[0]
+            items[position] = (tag, value[:8] + struct.pack("<I", max(length + delta, 0)) + value[12:])
+    return build_tlv(items)
 
 
 def _update_preview(db: sqlite3.Connection, sheet: ClipDocument, page: PlannedPage) -> None:

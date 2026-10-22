@@ -11,6 +11,7 @@ import hashlib
 import io
 from pathlib import Path
 import sqlite3
+import struct
 
 from PIL import Image, ImageChops
 import pytest
@@ -31,7 +32,7 @@ from name_splitter.csp.cmc_writer import write_cmc
 from name_splitter.csp.container import open_sqlite_bytes, read_csf_container
 from name_splitter.csp.page_writer import write_page
 from name_splitter.csp.split_plan import plan_sheet
-from name_splitter.csp.text_attributes import parse_text_attributes
+from name_splitter.csp.text_attributes import build_tlv, parse_text_attributes, parse_tlv
 
 SHEET_W, SHEET_H = 1600, 600
 PAGE_W, PAGE_H = 400, 560
@@ -72,7 +73,9 @@ def template_path(tmp_path: Path) -> Path:
     blank = Image.new("RGBA", (PAGE_W, PAGE_H), (0, 0, 0, 0))
     folder = tmp_path / "template"
     folder.mkdir()
-    layers = [FixtureLayer(main_id=2, name="用紙", layer_type=1584), FixtureLayer(main_id=3, name="レイヤー 1", image=blank)]
+    story = build_tlv([(0x0B, struct.pack("<4I", 1, 0, len("作品 3話"), 26)), (0x20, struct.pack("<i", 900))])
+    layers = [FixtureLayer(main_id=2, name="用紙", layer_type=1584), FixtureLayer(main_id=3, name="レイヤー 1", image=blank),
+              FixtureLayer(main_id=4, name="(作品情報)", layer_type=800, text="作品 3話", text_attributes=story)]
     preview = Image.new("RGBA", (PAGE_W // 2, PAGE_H // 2), (255, 255, 255, 255))
     return build_clip(folder / "page.clip", PAGE_W, PAGE_H, layers, preview=preview, editable=True)
 
@@ -185,7 +188,7 @@ def test_split_cli_writes_work(tmp_path: Path, sheet_path: Path, template_path: 
     inputs = {path: _digest(path) for path in (sheet_path, template_path, sheet_path.parent / "name.cmc")}
     out = tmp_path / "work"
     code = main(["split", str(sheet_path), "--template", str(template_path), "--out-dir", str(out),
-                 "--fit", "cell", "--cmc", "第1話", "--story-index", "4"])
+                 "--fit", "cell", "--cmc", "第1話", "--story-index", "12"])
     assert code == 0, capsys.readouterr().err
     project = read_cmc(out / "第1話.cmc")
     assert [page.file_name for page in project.pages] == [f"page{number:04d}.clip" for number in range(1, 5)]
@@ -193,9 +196,16 @@ def test_split_cli_writes_work(tmp_path: Path, sheet_path: Path, template_path: 
     # Story info comes from the work's .cmc, not from the template page.
     assert _canvas_value(out / "page0001.clip", "ComicStoryStoryName") == "Story"
     # --story-index overrides the episode number in the work and every page.
-    assert _canvas_value(out / "page0004.clip", "ComicStoryStoryIndex") == 4
+    assert _canvas_value(out / "page0004.clip", "ComicStoryStoryIndex") == 12
+    # The 作品情報 text CSP displays follows the new episode number.
+    database = open_sqlite_bytes(read_csf_container(out / "page0001.clip").sqlite_bytes)
+    string, attributes = database.execute(
+        "SELECT TextLayerString, TextLayerAttributes FROM Layer WHERE ComicStoryInfoType = 1").fetchone()
+    assert bytes(string).decode("utf-8") == "作品 12話"
+    runs = dict(parse_tlv(bytes(attributes)))[0x0B]
+    assert struct.unpack("<4I", runs) == (1, 0, len("作品 12話"), 26)
     with sqlite3.connect(out / "第1話.cmc") as work:
-        assert work.execute("SELECT ComicStoryStoryIndex FROM Project").fetchone()[0] == 4
+        assert work.execute("SELECT ComicStoryStoryIndex FROM Project").fetchone()[0] == 12
     assert all(_digest(path) == digest for path, digest in inputs.items())
 
 
