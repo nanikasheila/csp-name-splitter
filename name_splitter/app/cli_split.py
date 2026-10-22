@@ -37,6 +37,8 @@ def add_split_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--name", default="page{page:04d}.clip", help="File name pattern")
     parser.add_argument("--cmc", metavar="NAME",
                         help="Also write NAME.cmc listing every page (empty pages included) as one work")
+    parser.add_argument("--story-index", type=int,
+                        help="Episode number (話数) for the work and its pages (default: the template .cmc's)")
     parser.add_argument("--cmc-template",
                         help="CSP-made .cmc whose work settings are copied (default: the .cmc next to the sheet)")
 
@@ -73,7 +75,11 @@ def run_split_subcommand(args: argparse.Namespace) -> int:
         pages = [page for page in sorted(plan.pages, key=lambda item: item.number)
                  if (page.number in wanted if wanted is not None else bool(args.cmc or page.contents))]
         written = []
-        work_values = work_canvas_values(cmc_template) if args.cmc and cmc_template is not None else None
+        work_values = work_canvas_values(cmc_template) if args.cmc and cmc_template is not None else {}
+        overrides: dict[str, object] = {}
+        if args.story_index is not None:
+            overrides = {"ComicStoryUseStoryIndex": 1, "ComicStoryStoryIndex": args.story_index}
+        work_values.update(overrides)
         for position, page in enumerate(pages):
             result = write_page(template_path, sheet, page, out_dir / args.name.format(page=page.number),
                                 page_index=position if args.cmc else None, canvas_values=work_values)
@@ -84,7 +90,7 @@ def run_split_subcommand(args: argparse.Namespace) -> int:
         if args.cmc and cmc_template is not None:
             if not written:
                 raise ValueError("No pages to put in the work")
-            work = write_cmc(cmc_template, written, out_dir / f"{args.cmc}.cmc")
+            work = write_cmc(cmc_template, written, out_dir / f"{args.cmc}.cmc", project_values=overrides)
             print(f"Wrote {work} ({len(written)} pages)")
     except ValueError as exc:  # CspFormatError is a ValueError too
         label = "Format error" if isinstance(exc, CspFormatError) else "Invalid option"

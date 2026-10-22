@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import io
 from pathlib import Path
+import sqlite3
 
 from PIL import Image, ImageChops
 import pytest
@@ -184,13 +185,17 @@ def test_split_cli_writes_work(tmp_path: Path, sheet_path: Path, template_path: 
     inputs = {path: _digest(path) for path in (sheet_path, template_path, sheet_path.parent / "name.cmc")}
     out = tmp_path / "work"
     code = main(["split", str(sheet_path), "--template", str(template_path), "--out-dir", str(out),
-                 "--fit", "cell", "--cmc", "第1話"])
+                 "--fit", "cell", "--cmc", "第1話", "--story-index", "4"])
     assert code == 0, capsys.readouterr().err
     project = read_cmc(out / "第1話.cmc")
     assert [page.file_name for page in project.pages] == [f"page{number:04d}.clip" for number in range(1, 5)]
     assert [_canvas_page(out / page.file_name)[0] for page in project.pages] == [0, 1, 2, 3]
     # Story info comes from the work's .cmc, not from the template page.
     assert _canvas_value(out / "page0001.clip", "ComicStoryStoryName") == "Story"
+    # --story-index overrides the episode number in the work and every page.
+    assert _canvas_value(out / "page0004.clip", "ComicStoryStoryIndex") == 4
+    with sqlite3.connect(out / "第1話.cmc") as work:
+        assert work.execute("SELECT ComicStoryStoryIndex FROM Project").fetchone()[0] == 4
     assert all(_digest(path) == digest for path, digest in inputs.items())
 
 

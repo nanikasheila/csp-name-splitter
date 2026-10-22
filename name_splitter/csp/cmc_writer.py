@@ -80,11 +80,13 @@ def work_canvas_values(path: str | Path) -> dict[str, object]:
         database.close()
 
 
-def write_cmc(template: str | Path, pages: Sequence[str | Path], output: str | Path) -> Path:
+def write_cmc(template: str | Path, pages: Sequence[str | Path], output: str | Path,
+              project_values: dict[str, object] | None = None) -> Path:
     """Write ``output`` (.cmc) listing ``pages`` in order, with ``template``'s settings.
 
     Every page file must already exist in the folder of ``output``, because
-    CSP resolves page links relative to the .cmc.
+    CSP resolves page links relative to the .cmc. ``project_values``
+    overrides Project columns the template has (for example the 話数).
     """
     output_path = Path(output)
     if not pages:
@@ -98,6 +100,11 @@ def write_cmc(template: str | Path, pages: Sequence[str | Path], output: str | P
     database = _load_template(Path(template))
     try:
         _replace_pages(database, links)
+        known = set(column_names(database, "Project"))
+        for column, value in (project_values or {}).items():
+            if column in known:
+                database.execute(f'UPDATE Project SET "{column}" = ?', (value,))
+        database.commit()
         _save(database, output_path)
     finally:
         database.close()

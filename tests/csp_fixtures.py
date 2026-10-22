@@ -234,6 +234,7 @@ def _add_editing_schema(database: sqlite3.Connection) -> None:
         "ALTER TABLE Canvas ADD COLUMN ComicPageIndex;"
         "ALTER TABLE Canvas ADD COLUMN ComicIsLeftPage;"
         "ALTER TABLE Canvas ADD COLUMN ComicStoryStoryName;"
+        "ALTER TABLE Canvas ADD COLUMN ComicStoryStoryIndex;"
         "UPDATE Canvas SET ComicPageIndex = 0, ComicIsLeftPage = 1, ComicStoryStoryName = 'Template';"
         "ALTER TABLE Layer ADD COLUMN LayerRenderThumbnail;"
         "ALTER TABLE Layer ADD COLUMN LayerUuid;"
@@ -313,6 +314,7 @@ def build_cmc(path: Path, page_files: list[str], order: list[int] | None = None)
         "INSERT INTO Project VALUES('1.1.0', 1, 'Story', 'Author', 1, 1, 0, ?, 2, 182.0, 257.0, 600.0, 0, '')",
         (len(page_files),),
     )
+    database.execute("ALTER TABLE Project ADD COLUMN ComicStoryStoryIndex DEFAULT 3")
     node_ids = [index + 2 for index in range(len(page_files))]
     sequence = [node_ids[index] for index in order]
     database.execute("INSERT INTO CanvasNode VALUES(1, 0, 0, ?, 0, '', NULL)", (sequence[0],))
