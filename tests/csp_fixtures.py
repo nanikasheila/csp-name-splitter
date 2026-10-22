@@ -41,6 +41,7 @@ class FixtureLayer:
 
 VECTOR_HEADER_SIZE = 92
 VECTOR_POINT_SIZE = 88
+VECTOR_BRUSH_SIZE = 4.0
 CLOSED = 0x1111
 OPEN = 0x11
 
@@ -54,7 +55,8 @@ def build_vector_payload(objects: list[tuple[int, list[tuple[float, float]]]]) -
         bbox = (int(min(xs)) - 2, int(min(ys)) - 2, int(max(xs)) + 2, int(max(ys)) + 2)
         header = struct.pack(">6I4i", VECTOR_HEADER_SIZE, 76, VECTOR_POINT_SIZE, VECTOR_POINT_SIZE,
                              len(points), flags, *bbox)
-        body += header.ljust(VECTOR_HEADER_SIZE, b"\0")
+        brush = struct.pack(">dI", VECTOR_BRUSH_SIZE, 0)
+        body += header.ljust(VECTOR_HEADER_SIZE - len(brush), b"\0") + brush
         for x, y in points:
             point = struct.pack(">2d4i", x, y, int(x) - 2, int(y) - 2, int(x) + 2, int(y) + 2)
             body += point.ljust(VECTOR_POINT_SIZE, b"\0")
@@ -135,8 +137,13 @@ def _flatten(layers: list[FixtureLayer]) -> list[FixtureLayer]:
 
 
 def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], preview: bool = True,
-               double_page: bool = False) -> Path:
-    """Write a minimal .clip file whose root folder contains ``layers``."""
+               double_page: bool = False, editable: bool = False) -> Path:
+    """Write a minimal .clip file whose root folder contains ``layers``.
+
+    ``editable`` adds what the writers need from a CSP file: the schema
+    tables (ParamScheme, ElemScheme, ExternalTableAndColumnName), layer
+    thumbnails, mipmap chains and the page position columns.
+    """
     root = FixtureLayer(main_id=1, name="", layer_type=256, folder=1, children=layers)
     database = sqlite3.connect(":memory:")
     database.executescript(
@@ -197,7 +204,56 @@ def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], 
             )
     if preview:
         database.execute("INSERT INTO CanvasPreview VALUES(?)", (b"\x89PNG fake",),)
+    if editable:
+        _add_editing_schema(database)
     return _write_container(path, database, externals)
+
+
+# (table, column, link table, owner type) as CSP lists them in ParamScheme.
+EDITING_SCHEME = [
+    ("Layer", "LayerRenderMipmap", "Mipmap", 0),
+    ("Layer", "LayerRenderThumbnail", "LayerThumbnail", 0),
+    ("Layer", "VectorNormalStrokeIndex", "VectorObjectList", 0),
+    ("Mipmap", "BaseMipmapInfo", "MipmapInfo", 0),
+    ("Mipmap", "LayerId", "", 4),
+    ("MipmapInfo", "Offscreen", "Offscreen", 0),
+    ("MipmapInfo", "LayerId", "", 4),
+    ("Offscreen", "LayerId", "", 4),
+    ("LayerThumbnail", "LayerId", "", 4),
+    ("VectorObjectList", "LayerId", "", 4),
+]
+
+
+def _add_editing_schema(database: sqlite3.Connection) -> None:
+    database.executescript(
+        "ALTER TABLE Canvas ADD COLUMN ComicPageIndex;"
+        "ALTER TABLE Canvas ADD COLUMN ComicIsLeftPage;"
+        "UPDATE Canvas SET ComicPageIndex = 0, ComicIsLeftPage = 1;"
+        "ALTER TABLE Layer ADD COLUMN LayerRenderThumbnail;"
+        "ALTER TABLE Layer ADD COLUMN LayerUuid;"
+        "ALTER TABLE Layer ADD COLUMN VectorNormalStrokeIndex;"
+        "UPDATE Layer SET VectorNormalStrokeIndex = (SELECT MainId FROM VectorObjectList v WHERE v.LayerId = Layer.MainId);"
+        "ALTER TABLE Mipmap ADD COLUMN LayerId;"
+        "ALTER TABLE MipmapInfo ADD COLUMN LayerId;"
+        "ALTER TABLE MipmapInfo ADD COLUMN NextIndex;"
+        "ALTER TABLE Offscreen ADD COLUMN LayerId;"
+        "CREATE TABLE LayerThumbnail(MainId, LayerId);"
+        "CREATE TABLE ParamScheme(TableName, LabelName, LinkTable, OwnerType);"
+        "CREATE TABLE ElemScheme(TableName, ElemType, MaxIndex);"
+        "CREATE TABLE ExternalTableAndColumnName(TableName, ColumnName);"
+        "INSERT INTO ExternalTableAndColumnName VALUES('Offscreen', 'BlockData'), ('VectorObjectList', 'VectorData');"
+    )
+    database.executemany("INSERT INTO ParamScheme VALUES(?, ?, ?, ?)", EDITING_SCHEME)
+    for layer_id, mipmap in database.execute("SELECT MainId, LayerRenderMipmap FROM Layer").fetchall():
+        if mipmap:
+            database.execute("INSERT INTO LayerThumbnail VALUES(?, ?)", (mipmap, layer_id))
+            database.execute("UPDATE Layer SET LayerRenderThumbnail = ? WHERE MainId = ?", (mipmap, layer_id))
+            for table in ("Mipmap", "MipmapInfo", "Offscreen"):
+                database.execute(f"UPDATE {table} SET LayerId = ? WHERE MainId = ?", (layer_id, mipmap))
+    database.execute("UPDATE MipmapInfo SET NextIndex = 0")
+    for table in ("Layer", "Mipmap", "MipmapInfo", "Offscreen", "LayerThumbnail", "VectorObjectList"):
+        top = database.execute(f"SELECT COALESCE(MAX(MainId), 0) FROM {table}").fetchone()[0]
+        database.execute("INSERT INTO ElemScheme VALUES(?, 0, ?)", (table, top))
 
 
 def _attribute_array(blocks: list[bytes] | None) -> bytes | None:

@@ -32,6 +32,7 @@ SCHEMA_TABLES = ("Layer", "Canvas", "VectorObjectList", "BrushStyleManager", "Br
 SHARED_TABLES = ("BrushStyleManager", "BrushStyle")
 TEXT_BLOBS = ("TextLayerAttributes",)
 TEXT_ARRAYS = ("TextLayerAttributesArray", "TextLayerAddAttributesV01")
+PAGE_COLUMNS = ("ComicPageIndex", "ComicIsLeftPage")
 
 
 @dataclass
@@ -41,9 +42,15 @@ class PageResult:
     warnings: list[str] = field(default_factory=list)
 
 
-def write_page(template: str | Path, sheet: ClipDocument, page: PlannedPage, output: str | Path) -> PageResult:
-    """Write ``page`` of ``sheet`` into a copy of ``template`` saved as ``output``."""
+def write_page(template: str | Path, sheet: ClipDocument, page: PlannedPage, output: str | Path,
+               page_index: int | None = None) -> PageResult:
+    """Write ``page`` of ``sheet`` into a copy of ``template`` saved as ``output``.
+
+    ``page_index`` is the 0-based position of the page in the work (CSP's
+    ``ComicPageIndex``, used for the ノンブル); it defaults to ``page.number - 1``.
+    """
     editor = ClipEditor(template)
+    _set_page_index(editor.db, page.number - 1 if page_index is None else page_index)
     source = open_sqlite_bytes(sheet.container.sqlite_bytes)
     merge_schema(editor.db, source, list(SCHEMA_TABLES))
     _share_rows(editor.db, source)
@@ -116,6 +123,20 @@ def _transform_array(blob: bytes, scale: float, dx: float, dy: float, column: st
         warnings.append(f"{column} has an unknown layout and was copied unchanged")
         return blob
     return b"".join(struct.pack("<I", len(block)) + block for block in moved)
+
+
+def _set_page_index(db: sqlite3.Connection, index: int) -> None:
+    """Set the page position and side (left / right) on the copied canvas.
+
+    Why: CSP numbers pages and places the ノンブル from these columns.
+    How: The side alternates with the index; the template's own pair gives
+         the parity, so the binding direction and start side need no guess.
+    """
+    if not set(PAGE_COLUMNS) <= set(column_names(db, "Canvas")):
+        return
+    template_index, template_left = db.execute("SELECT ComicPageIndex, ComicIsLeftPage FROM Canvas").fetchone()
+    left = bool(template_left) == ((index - int(template_index or 0)) % 2 == 0)
+    db.execute("UPDATE Canvas SET ComicPageIndex = ?, ComicIsLeftPage = ?", (index, int(left)))
 
 
 def _share_rows(target: sqlite3.Connection, source: sqlite3.Connection) -> None:
