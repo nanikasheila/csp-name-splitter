@@ -39,6 +39,16 @@
 
 未解明: `SelectedIndex`、`CanvasIndex`。
 
+- `LinkWrite*`（年月日時分秒）はページファイルの更新日時、`LinkUnit` / `LinkWidth` / `LinkHeight` / `LinkResolution` はページの大きさのキャッシュらしい。
+  CSP が書いた実ファイルでも 0 や不自然な値の行があり、厳密には使われていないと推測
+- `MainId` の最大値は `ElemScheme`（`TableName = 'CanvasNode'`）の `MaxIndex` にも記録される
+
+### .cmc の書き出し（`split --cmc`）
+
+CSP で作った同じ作品の .cmc をテンプレートにして、`Project` 行（作品の設定）はそのまま残し、`CanvasNode` のページ行だけを作り直す。
+ページ行はテンプレートの最初のページ行を写してから、`LinkPath`・`NextIndex`・`PageFlag`（見開き）・`LinkWrite*`（ファイルの更新日時）・ページの大きさを書き換える。
+`MaxCanvasFileIndex` はページファイル名の番号の最大値にする。
+
 ---
 
 ## .clip（1ページ）

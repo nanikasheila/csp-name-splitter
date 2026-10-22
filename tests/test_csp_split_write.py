@@ -1,9 +1,9 @@
-"""Tests for writing page .clip files from a name sheet.
+"""Tests for writing page .clip files and the .cmc work from a name sheet.
 
-Why: Stage 3 copies layers from a sheet into a page template. Only CSP can
-     confirm a file opens, but these tests check that what we write reads
-     back with the planned layers, positions and sizes, and that the input
-     files are never changed.
+Why: Stages 3 and 4 copy layers from a sheet into a page template and list
+     the pages in a .cmc. Only CSP can confirm a file opens, but these tests
+     check that what we write reads back with the planned layers, positions,
+     sizes and page order, and that the input files are never changed.
 """
 from __future__ import annotations
 
@@ -18,11 +18,14 @@ from csp_fixtures import (
     VECTOR_BRUSH_SIZE,
     FixtureLayer,
     build_clip,
+    build_cmc,
     build_text_attributes,
     rectangle,
 )
-from name_splitter.csp import read_clip
+from name_splitter.app.cli import main
+from name_splitter.csp import read_clip, read_cmc
 from name_splitter.csp.clip_editor import ClipEditor
+from name_splitter.csp.cmc_writer import write_cmc
 from name_splitter.csp.container import open_sqlite_bytes, read_csf_container
 from name_splitter.csp.page_writer import write_page
 from name_splitter.csp.split_plan import plan_sheet
@@ -131,3 +134,48 @@ def test_write_page_scales_text(tmp_path: Path, sheet_path: Path, template_path:
     attributes = parse_text_attributes(bytes(blob))
     assert attributes.font_size_pt == pytest.approx(4.0 * page.transform.scale, abs=0.01)
     assert _canvas_page(result.path) == (5, 0)
+
+
+def test_write_cmc_lists_pages_in_order(tmp_path: Path, template_path: Path) -> None:
+    project_template = build_cmc(tmp_path / "template" / "work.cmc", ["page0001.clip"])
+    before = _digest(project_template)
+    out = tmp_path / "out"
+    out.mkdir()
+    pages = []
+    for number in (3, 1, 2):
+        page = out / f"page{number:04d}.clip"
+        page.write_bytes(template_path.read_bytes())
+        pages.append(page)
+    work = write_cmc(project_template, pages, out / "new.cmc")
+    project = read_cmc(work)
+    assert [page.file_name for page in project.pages] == ["page0003.clip", "page0001.clip", "page0002.clip"]
+    assert project.max_canvas_file_index == 3
+    assert project.story_name == "Story"
+    assert _digest(project_template) == before
+    with pytest.raises(ValueError):
+        write_cmc(project_template, [template_path], out / "bad.cmc")
+    with pytest.raises(ValueError):
+        write_cmc(project_template, [], out / "empty.cmc")
+
+
+def test_split_cli_writes_work(tmp_path: Path, sheet_path: Path, template_path: Path,
+                               capsys: pytest.CaptureFixture[str]) -> None:
+    build_cmc(sheet_path.parent / "name.cmc", ["sheet.clip"])
+    inputs = {path: _digest(path) for path in (sheet_path, template_path, sheet_path.parent / "name.cmc")}
+    out = tmp_path / "work"
+    code = main(["split", str(sheet_path), "--template", str(template_path), "--out-dir", str(out),
+                 "--fit", "cell", "--cmc", "第1話"])
+    assert code == 0, capsys.readouterr().err
+    project = read_cmc(out / "第1話.cmc")
+    assert [page.file_name for page in project.pages] == [f"page{number:04d}.clip" for number in range(1, 5)]
+    assert [_canvas_page(out / page.file_name)[0] for page in project.pages] == [0, 1, 2, 3]
+    assert all(_digest(path) == digest for path, digest in inputs.items())
+
+
+def test_split_cli_refuses_input_folders(sheet_path: Path, template_path: Path) -> None:
+    code = main(["split", str(sheet_path), "--template", str(template_path), "--out-dir", str(sheet_path.parent)])
+    assert code == 2
+    # --cmc without a template .cmc next to the sheet
+    code = main(["split", str(sheet_path), "--template", str(template_path),
+                 "--out-dir", str(sheet_path.parent.parent / "out"), "--cmc", "x"])
+    assert code == 2
