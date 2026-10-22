@@ -37,6 +37,9 @@ from name_splitter.csp.text_attributes import build_tlv, parse_text_attributes, 
 
 SHEET_W, SHEET_H = 1600, 600
 PAGE_W, PAGE_H = 400, 560
+# The hidden ノンブル of a left page: one 10 px wide digit near the right (binding) edge.
+NOMBRE = build_tlv([(0x0B, struct.pack("<3I", 1, 0, 1)), (0x2A, struct.pack("<4i", 380, 540, 390, 550)),
+                    (0x3F, struct.pack("<2i", 10, 10)), (0x40, struct.pack("<8i", 0, 0, 1000, 0, 1000, 1000, 0, 1000))])
 RIGHT_SPREAD = [rectangle(840, 40, 1560, 560), rectangle(860, 60, 1190, 540), rectangle(1210, 60, 1540, 540)]
 
 
@@ -76,7 +79,8 @@ def template_path(tmp_path: Path) -> Path:
     folder.mkdir()
     story = build_tlv([(0x0B, struct.pack("<4I", 1, 0, len("作品 3話"), 26)), (0x20, struct.pack("<i", 900))])
     layers = [FixtureLayer(main_id=2, name="用紙", layer_type=1584), FixtureLayer(main_id=3, name="レイヤー 1", image=blank),
-              FixtureLayer(main_id=4, name="(作品情報)", layer_type=800, text="作品 3話", text_attributes=story)]
+              FixtureLayer(main_id=4, name="(作品情報)", layer_type=800, text="作品 3話", text_attributes=story),
+              FixtureLayer(main_id=5, name="(ノンブル)", layer_type=800, text="1", text_attributes=NOMBRE)]
     preview = Image.new("RGBA", (PAGE_W // 2, PAGE_H // 2), (255, 255, 255, 255))
     return build_clip(folder / "page.clip", PAGE_W, PAGE_H, layers, preview=preview, editable=True)
 
@@ -142,6 +146,25 @@ def test_write_page_copies_planned_layers(tmp_path: Path, sheet_path: Path, temp
     mask = Image.eval(ImageChops.difference(thumbnail, red).convert("L"), lambda value: 255 if value < 40 else 0)
     rx0, ry0, rx1, ry1 = mask.getbbox() or (0, 0, 0, 0)
     assert abs((rx0 + rx1) / 2 - (1300 * scale + dx) / 2) <= 2 and abs((ry0 + ry1) / 2 - (300 * scale + dy) / 2) <= 2
+
+
+def _nombre(path: Path) -> tuple[str, tuple[int, ...], int]:
+    database = open_sqlite_bytes(read_csf_container(path).sqlite_bytes)
+    string, attributes = database.execute(
+        "SELECT TextLayerString, TextLayerAttributes FROM Layer WHERE ComicStoryInfoType = 2").fetchone()
+    flag = database.execute("SELECT CropFrameOptionFlag FROM Canvas").fetchone()[0]
+    return bytes(string).decode("utf-8"), struct.unpack("<4i", dict(parse_tlv(bytes(attributes)))[0x2A]), flag
+
+
+def test_write_page_sets_nombre_and_side(tmp_path: Path, sheet_path: Path, template_path: Path) -> None:
+    sheet = read_clip(sheet_path)
+    page = plan_sheet(sheet, PAGE_W, PAGE_H, fit="cell").pages[0]
+    # Same side as the template (left): only the number changes, keeping the binding edge.
+    assert _nombre(write_page(template_path, sheet, page, tmp_path / "p11.clip", page_index=10).path) == (
+        "11", (370, 540, 390, 550), 2)
+    # A right page: CSP keeps the ノンブル at the binding edge, now on the left, and flags the side.
+    assert _nombre(write_page(template_path, sheet, page, tmp_path / "p2.clip", page_index=1).path) == (
+        "2", (10, 540, 20, 550), 4)
 
 
 def test_write_page_scales_text(tmp_path: Path, sheet_path: Path, template_path: Path) -> None:
