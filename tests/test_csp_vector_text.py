@@ -14,6 +14,7 @@ import pytest
 
 from csp_fixtures import (
     OPEN,
+    VECTOR_BRUSH_SIZE,
     FixtureLayer,
     build_clip,
     build_text_attributes,
@@ -47,7 +48,8 @@ def test_vector_transform_moves_points_and_boxes() -> None:
     assert moved.points[0] == (25, 30)
     assert moved.points[2] == (225, 430)
     assert moved.bbox == (21, 26, 229, 434)
-    # Undecoded bytes (colours, widths) stay as they were.
+    assert moved.brush_size == 2 * VECTOR_BRUSH_SIZE
+    # Undecoded bytes (colours, pressure) stay as they were.
     assert len(transform_vector_data(payload, 2.0, 5, -10)) == len(payload)
 
 

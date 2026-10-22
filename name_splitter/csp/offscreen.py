@@ -182,3 +182,33 @@ def decode_offscreen_image(attribute: bytes, payload: bytes | None) -> Image.Ima
         row, column = divmod(block.index, parameters.blocks_x)
         canvas.paste(_block_to_image(block.raw, parameters), (column * BLOCK_SIZE, row * BLOCK_SIZE))
     return canvas
+
+
+def decode_offscreen_region(attribute: bytes, payload: bytes | None,
+                            box: tuple[int, int, int, int]) -> Image.Image:
+    """Decode only the blocks that overlap ``box`` (offscreen pixels).
+
+    Why: A name sheet's layer is about 14000x10000 px; a page needs only
+         its own cell, so decoding the whole layer would waste memory.
+    """
+    x0, y0, x1, y1 = box
+    region = Image.new("RGBA", (max(x1 - x0, 1), max(y1 - y0, 1)), (0, 0, 0, 0))
+    if payload is None:
+        return region
+    parameters = parse_offscreen_attribute(attribute)
+    expected_raw = BLOCK_PLANE_BYTES * parameters.total_planes
+    for block_index, raw_size, compressed in iter_block_records(payload):
+        if compressed is None:
+            continue
+        row, column = divmod(block_index, parameters.blocks_x)
+        left, top = column * BLOCK_SIZE, row * BLOCK_SIZE
+        if left >= x1 or top >= y1 or left + BLOCK_SIZE <= x0 or top + BLOCK_SIZE <= y0:
+            continue
+        try:
+            raw = zlib.decompress(compressed)
+        except zlib.error as exc:
+            raise CspFormatError(f"Block {block_index} is not valid zlib data") from exc
+        if len(raw) != expected_raw or raw_size != expected_raw:
+            raise CspFormatError(f"Block {block_index} has an unsupported size {len(raw)}")
+        region.paste(_block_to_image(raw, parameters), (left - x0, top - y0))
+    return region

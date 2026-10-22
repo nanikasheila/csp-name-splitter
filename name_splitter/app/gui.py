@@ -39,6 +39,7 @@ from name_splitter.app.gui_types import (
     PresetFields, RecentFields,
 )
 from name_splitter.app.app_settings import load_app_settings, save_app_settings
+from name_splitter.app.gui_csp import CspSplitController, build_csp_fields, build_csp_tab
 
 
 def main() -> None:
@@ -278,6 +279,41 @@ def main() -> None:
                 template_out_field.value = path
                 handlers.flush()
 
+        # CSP split tab (.clip name sheet → page .clip + .cmc)
+        csp_fields = build_csp_fields(ft)
+        csp_controller = CspSplitController(csp_fields, handlers, page.run_thread)
+
+        def make_csp_picker(field: Any, extensions: list[str] | None) -> Any:
+            async def pick(_: ft.ControlEvent) -> None:
+                try:
+                    if extensions is None:
+                        path = await ft.FilePicker().get_directory_path()
+                    else:
+                        files = await ft.FilePicker().pick_files(
+                            allow_multiple=False,
+                            file_type=ft.FilePickerFileType.CUSTOM,
+                            allowed_extensions=extensions,
+                        )
+                        path = files[0].path if files else None
+                except Exception as exc:  # noqa: BLE001
+                    if "Session closed" not in str(exc):
+                        handlers.add_log(f"FilePicker error: {exc}")
+                        handlers.flush()
+                    return
+                if path:
+                    field.value = path
+                    if field is csp_fields.sheet_field:
+                        csp_controller.on_sheet_change(None)
+                    handlers.flush()
+            return pick
+
+        csp_pickers = {
+            "sheet": make_csp_picker(csp_fields.sheet_field, ["clip"]),
+            "template": make_csp_picker(csp_fields.template_field, ["clip"]),
+            "out_dir": make_csp_picker(csp_fields.out_dir_field, None),
+            "cmc_template": make_csp_picker(csp_fields.cmc_template_field, ["cmc"]),
+        }
+
         # ============================================================== #
         #  イベント登録                                                   #
         # ============================================================== #
@@ -477,6 +513,7 @@ def main() -> None:
         tab_template = builder.build_tab_template(
             template_fields, tmpl_btn, pick_template_out
         )
+        tab_csp = build_csp_tab(ft, csp_fields, csp_controller, csp_pickers)
 
         # Batch tab — wire run/cancel buttons to batch handlers
         batch_fields["batch_run_btn"].on_click = handlers.on_run_batch
@@ -502,7 +539,7 @@ def main() -> None:
                 ),
                 ft.Container(
                     content=log_field,
-                    border=ft.border.all(1, outline_color),
+                    border=ft.Border.all(1, outline_color),
                     padding=8,
                     expand=True,
                 ),
@@ -524,7 +561,7 @@ def main() -> None:
                             content=ft.Stack([
                                 ft.Container(
                                     content=preview_viewer,
-                                    border=ft.border.all(1, outline_color),
+                                    border=ft.Border.all(1, outline_color),
                                     padding=4,
                                 ),
                                 ft.Container(
@@ -539,11 +576,11 @@ def main() -> None:
                     expand=1,
                     padding=ft.Padding(4, 4, 2, 4),
                 ),
-                # Right: 5 Tabs (Config / Image Split / Template / Batch / Log)
+                # Right: 6 Tabs (Config / Image Split / Template / CSP Split / Batch / Log)
                 ft.Container(
                     content=ft.Column([
                         ft.Tabs(
-                            length=5,
+                            length=6,
                             selected_index=0,
                             on_change=handlers.on_tab_change,
                             content=ft.Column([
@@ -551,11 +588,12 @@ def main() -> None:
                                     ft.Tab(label="Config", icon=ft.Icons.SETTINGS),
                                     ft.Tab(label="Image Split", icon=ft.Icons.IMAGE),
                                     ft.Tab(label="Template", icon=ft.Icons.GRID_ON),
+                                    ft.Tab(label="CSP Split", icon=ft.Icons.AUTO_STORIES),
                                     ft.Tab(label="Batch", icon=ft.Icons.FOLDER_COPY),
                                     ft.Tab(label="Log", icon=ft.Icons.TERMINAL),
                                 ]),
                                 ft.TabBarView(
-                                    controls=[tab_config, tab_image, tab_template, tab_batch, tab_log],  # type: ignore[list-item]
+                                    controls=[tab_config, tab_image, tab_template, tab_csp, tab_batch, tab_log],  # type: ignore[list-item]
                                     expand=True,
                                 ),
                             ], expand=True),
@@ -616,7 +654,11 @@ def main() -> None:
 
         page.window.on_resized = on_window_resize  # type: ignore[attr-defined]
 
-    ft.app(target=_app)
+    run = getattr(ft, "run", None)  # ft.app is deprecated since Flet 0.80
+    if run is not None:
+        run(_app)
+    else:
+        ft.app(target=_app)
 
 
 __all__ = ["main"]

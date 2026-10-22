@@ -4,10 +4,11 @@
 
 **CSPネーム分割ツール**
 
-CSPで作成した俯瞰ネーム画像を自動分割し、<br>
-複数ページPNG群として出力するツール
+CSPのネーム用紙（.clip）をレイヤーごとページに分け、<br>
+ページの .clip と複数ページ作品（.cmc）を作るツール<br>
+（俯瞰ネーム画像の PNG 分割にも対応）
 
-[![Version](https://img.shields.io/badge/version-v1.0.0-orange.svg)](https://github.com/yourusername/csp-name-splitter/releases)
+[![Version](https://img.shields.io/badge/version-v2.0.0-orange.svg)](https://github.com/yourusername/csp-name-splitter/releases)
 [![Python Version](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -42,7 +43,10 @@ CSPで作成した俯瞰ネーム画像を自動分割し、<br>
 
 ## 🎯 概要
 
-**csp-name-splitter**は、CLIP STUDIO PAINT（CSP）で作成した「俯瞰ネーム」（複数ページを1枚の画像にまとめたもの）を、ページごとの個別PNG画像に自動分割するツールです。
+**csp-name-splitter**は、CLIP STUDIO PAINT（CSP）で作成した「俯瞰ネーム」（複数ページを1枚にまとめたもの）をページごとに分けるツールです。
+
+- **v2.0.0 から**: ページ枠を描いたネーム用紙の .clip を読み、レイヤー（ラスター・ベクター・テキスト）を保ったままページごとの .clip に分け、CSP EX で開ける複数ページ作品（.cmc）も作れます。ネームの内枠は原稿の基本枠に合わせて拡大配置します（GUI の「CSP Split」タブ、または `split` コマンド）
+- **v1 からの機能**: 書き出した PNG をグリッドで分割し、ページ別 PNG 群にします
 
 ### 想定ワークフロー
 
@@ -95,7 +99,7 @@ graph LR
 ```bash
 # 1. インストール
 pip install -e .
-pip install flet  # GUI用
+pip install "flet>=0.80,<1.0"  # GUI用
 
 # 2. GUI起動
 python -m name_splitter.app.cli --gui
@@ -156,7 +160,7 @@ pip install -e .
 
 ```bash
 # Fletを追加インストール
-pip install flet
+pip install "flet>=0.80,<1.0"
 ```
 
 ### 開発環境（テスト含む）
@@ -215,6 +219,16 @@ graph TD
 | **キャンセル** | 処理を中断 |
 | **バッチ処理** | フォルダ内の複数画像を一括処理（Batch タブ） |
 | **自動フォルダオープン** | 完了後に出力フォルダを自動で開く |
+| **CSP Split** | ネーム用紙の .clip からページの .clip と作品（.cmc）を作る（CSP Split タブ） |
+
+#### CSP Split タブ（v2.0.0）
+
+1. 「ネーム用紙 (.clip)」にページ枠を描いたネームの .clip を指定します。同じフォルダーの .cmc・作品ファイル名・出力フォルダー（ネーム用紙のフォルダーの隣の「〇〇_ページ」）が自動で入ります
+2. 「空ページ (.clip)」に、作品の空ページを CSP で保存したものを指定します（ページの大きさ・基本枠・作品情報はこのページから取ります）
+3. 「計画を確認」で、ページ枠とページ番号を左のプレビューに表示します（まだ何も書き出しません）
+4. 「書き出す」でページの .clip と作品の .cmc を作ります。途中で「中止」できます
+
+入力ファイルは読むだけで変更しません。出力フォルダーは入力と別のフォルダーにする必要があります。
 
 ### CLI モード
 
@@ -263,6 +277,41 @@ python -m name_splitter.app.cli inspect page0001.clip --pixels
 # 複数ページ作品のページ順を表示
 python -m name_splitter.app.cli inspect 作品.cmc --output pages.json
 ```
+
+#### ネーム用紙の分割計画を確認する（開発中）
+
+`plan` サブコマンドは、ネーム用紙の .clip からページ枠（ベクターで描いた四角形）を見つけ、各ページに何が載るかを JSON で表示します。まだ .clip は書き出しません。
+
+```bash
+# ページ枠・ページ番号・各ページに載るレイヤーを表示し、確認用の画像も保存
+python -m name_splitter.app.cli plan ネーム用紙.clip --output plan.json --preview plan.png
+
+# 出力ページのキャンバスサイズ（px）と読み順、最初のページ番号を指定
+python -m name_splitter.app.cli plan ネーム用紙.clip --page-size 7016x9921 --order rtl_ttb --first-page 3
+```
+
+- 同じ大きさで繰り返し描かれた四角形をページ枠とみなします。中に枠が 2 つ並ぶ大きな四角形は見開きとして左右 2 ページに分けます
+- 見開きキャンバスの用紙は、右綴じ（`rtl_ttb`）なら右半分から読みます
+- 各ページの内枠を、出力ページの基本枠（用紙に設定された基本枠のサイズを中央に配置）に縦横同じ倍率で合わせます。`--fit trim` にすると仕上がり枠（トンボの内側）に、`--fit cell` にするとページ枠全体をキャンバスに収めます。`--basic-size` / `--trim-size` で枠の大きさ（px）を指定できます
+- ラスターはページ枠で切り抜き、ベクターとテキストは座標を移します。ページ枠だけのレイヤー（テンプレート）は出力しません
+
+#### ネーム用紙からページと作品を作る
+
+`split` サブコマンドは、`plan` と同じ分割でページごとの .clip を書き出します。`--cmc` を付けると、全ページを並べた複数ページ作品（.cmc）も作り、CLIP STUDIO PAINT EX でそのまま開けます。入力ファイル（ネーム用紙・テンプレート）は読むだけで、出力先は入力と別のフォルダーにする必要があります。
+
+```bash
+# 作品の空ページ（CSP で保存したもの）をテンプレートに、中身のあるページだけ書き出す
+python -m name_splitter.app.cli split ネーム用紙.clip --template 空ページ.clip --out-dir ./pages
+
+# 全ページを書き出し、作品ファイル 第4話.cmc も作る（作品の設定はネーム用紙の隣の .cmc から写す）
+python -m name_splitter.app.cli split ネーム用紙.clip --template 空ページ.clip --out-dir ./第4話 --cmc 第4話
+```
+
+- ページの大きさ・基本枠・仕上がり枠・作品情報やノンブルのレイヤーはテンプレートのページのまま。ネームの内枠がテンプレートの基本枠に重なるように拡大して配置し（`--fit trim` で仕上がり枠）、レイヤーはネーム用紙と同じフォルダー構成で追加します
+- ベクターは線の太さも、テキストは文字の大きさも、拡大率に合わせて変えます
+- 作品の設定（綴じ方向・開始ページ・作品名など）は `--cmc-template` の .cmc から写します。省略するとネーム用紙と同じフォルダーにある .cmc を使います。各ページの作品情報もこの値に揃えます
+- 話数だけ変えたいときは `--story-index 4` のように指定します。作品・各ページの設定と、ページ下の作品情報の表示が変わります
+- ページ一覧のサムネイルは、ネーム用紙のプレビューからページ枠の部分を切り抜いて作ります（ネームの枠線も写ります）
 
 形式の詳細は [docs/formats/csp-file-format.md](docs/formats/csp-file-format.md) を参照してください。
 
@@ -359,7 +408,7 @@ limits:
 
 **解決策**:
 ```bash
-pip install flet --upgrade
+pip install "flet>=0.80,<1.0" --upgrade
 ```
 
 #### `出力ページ数が想定と違う`

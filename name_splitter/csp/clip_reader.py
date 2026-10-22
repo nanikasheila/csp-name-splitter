@@ -27,6 +27,7 @@ from .offscreen import (
     BLOCK_SIZE,
     OffscreenParameters,
     decode_offscreen_image,
+    decode_offscreen_region,
     iter_block_records,
     parse_offscreen_attribute,
 )
@@ -56,6 +57,9 @@ class ClipCanvas:
     width_px: int
     height_px: int
     is_double_page: bool
+    crop_size_px: tuple[int, int] | None = None
+    basic_size_px: tuple[int, int] | None = None
+    basic_offset_px: tuple[int, int] = (0, 0)
 
     @property
     def single_page_width_px(self) -> int:
@@ -145,6 +149,15 @@ class ClipDocument:
         """Return the offscreen geometry of a layer's render image."""
         attribute, _ = _base_offscreen(self.container, layer.render_mipmap)
         return None if attribute is None else parse_offscreen_attribute(attribute)
+
+    def layer_pixels_in_box(self, layer: ClipLayer, box: tuple[int, int, int, int]) -> Image.Image:
+        """Decode the layer's pixels inside a canvas box (transparent where none)."""
+        attribute, payload = _base_offscreen(self.container, layer.render_mipmap)
+        origin_x, origin_y = layer.pixel_origin
+        x0, y0, x1, y1 = box
+        if attribute is None:
+            return Image.new("RGBA", (max(x1 - x0, 1), max(y1 - y0, 1)), (0, 0, 0, 0))
+        return decode_offscreen_region(attribute, payload, (x0 - origin_x, y0 - origin_y, x1 - origin_x, y1 - origin_y))
 
     def occupied_pixel_boxes(self, layer: ClipLayer) -> list[tuple[int, int, int, int]]:
         """Return canvas boxes of the 256px blocks that store pixels.
@@ -236,7 +249,40 @@ def _build_canvas(row: sqlite3.Row) -> ClipCanvas:
         width_px=_to_pixels(width, unit, resolution),
         height_px=_to_pixels(height, unit, resolution),
         is_double_page=bool(row["CanvasDoublePage"]) if "CanvasDoublePage" in row.keys() else False,
+        crop_size_px=_crop_size(row, resolution),
+        basic_size_px=_crop_size(row, resolution, "CropFrameInnerWidth", "CropFrameInnerHeight"),
+        basic_offset_px=_basic_offset(row, resolution),
     )
+
+
+def _crop_size(row: sqlite3.Row, resolution: float, width_column: str = "CropFrameWidth",
+               height_column: str = "CropFrameHeight") -> tuple[int, int] | None:
+    """Trim (仕上がり) frame size of one page in pixels, if the canvas has one.
+
+    With the ``CropFrameInner*`` columns it gives the basic frame (基本枠) instead.
+    """
+    keys = row.keys()
+    if width_column not in keys or height_column not in keys:
+        return None
+    width, height = float(row[width_column] or 0), float(row[height_column] or 0)
+    if width <= 0 or height <= 0:
+        return None
+    unit = _crop_unit(row)
+    return _to_pixels(width, unit, resolution), _to_pixels(height, unit, resolution)
+
+
+def _basic_offset(row: sqlite3.Row, resolution: float) -> tuple[int, int]:
+    """Offset of the basic frame (基本枠) from the trim frame's centre, in pixels."""
+    keys = row.keys()
+    unit = _crop_unit(row)
+    x = float(row["CropFrameInnerOffsetX"] or 0) if "CropFrameInnerOffsetX" in keys else 0.0
+    y = float(row["CropFrameInnerOffsetY"] or 0) if "CropFrameInnerOffsetY" in keys else 0.0
+    return _to_pixels(x, unit, resolution), _to_pixels(y, unit, resolution)
+
+
+def _crop_unit(row: sqlite3.Row) -> str:
+    unit_kind = int(row["CropFrameUnitKind"] or 0) if "CropFrameUnitKind" in row.keys() else 0
+    return CANVAS_UNIT_NAMES.get(unit_kind, "px")
 
 
 def _to_pixels(value: float, unit: str, resolution: float) -> int:

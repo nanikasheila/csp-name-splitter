@@ -39,6 +39,23 @@
 
 未解明: `SelectedIndex`、`CanvasIndex`。
 
+- `LinkWrite*`（年月日時分秒）はページファイルの更新日時、`LinkUnit` / `LinkWidth` / `LinkHeight` / `LinkResolution` はページの大きさのキャッシュらしい。
+  CSP が書いた実ファイルでも 0 や不自然な値の行があり、厳密には使われていないと推測
+- `MainId` の最大値は `ElemScheme`（`TableName = 'CanvasNode'`）の `MaxIndex` にも記録される
+
+### .cmc の書き出し（`split --cmc`）
+
+CSP で作った同じ作品の .cmc をテンプレートにして、`Project` 行（作品の設定）はそのまま残し、`CanvasNode` のページ行だけを作り直す。
+ページ行はテンプレートの最初のページ行を写してから、`LinkPath`・`NextIndex`・`PageFlag`（見開き）・`LinkWrite*`（ファイルの更新日時）・ページの大きさを書き換える。
+`MaxCanvasFileIndex` はページファイル名の番号の最大値にする。
+各ページの `Canvas` の作品情報（`ComicStory*`、`ComicBindPosition`）は、テンプレートのページではなく .cmc の `Project` の値で上書きする。
+
+### ページ一覧のサムネイル（`CanvasPreview`）
+
+`CanvasPreview` は 1 行で、`ImageData` が PNG（RGBA、A3 600dpi のページで 877×1240）。CSP EX は作品のページ一覧にこれを表示するらしく、
+テンプレートの白紙のプレビューのままだと全ページが白紙に見えた（CSP EX 5.1.4 で確認）。
+書き出しでは、ネーム用紙のプレビューからページ枠の部分を切り抜き、ページと同じ変換で貼り付ける。
+
 ---
 
 ## .clip（1ページ）
@@ -64,6 +81,12 @@ SQLite の `ExternalChunk` テーブルが「外部ID → ファイル内の位�
 `CanvasUnit`（2 = mm, 0 = px と推測）、`CanvasWidth` / `CanvasHeight`、`CanvasResolution`、`CanvasRootFolder`（ルートフォルダのレイヤーID）、
 トンボ（`CropFrame*`）、作品情報（`ComicStory*`、`.cmc` の値の写し）、`ComicPageIndex` など。
 
+- 基本枠は `CropFrameInnerWidth` / `CropFrameInnerHeight`（観察値 212×300mm）。`CropFrameInnerOffsetX/Y` は中央からのずれと推測（観察値はすべて 0、
+  `CropFrameInnerOffsetBasePosition` の意味は未解明）。分割では既定でネームの内枠をこの基本枠に合わせる
+- `ComicPageIndex` は作品内のページ位置（0 始まり、見開きは 2 ページ分）、`ComicIsLeftPage` は左ページかどうか。
+  6 ファイルで「位置が 1 つ進むごとに左右が入れ替わる」ことと矛盾しない。右綴じ・`ComicStartPage = 0` の作品では位置 0 が左ページ。
+  ページを書き出すときは、テンプレートのページの組を基準に左右を決める（綴じ方向の推測が要らない）
+
 ### Layer テーブル（レイヤーツリー、確認済み）
 
 - `Canvas.CanvasRootFolder` がルートフォルダの `MainId`
@@ -81,6 +104,17 @@ SQLite の `ExternalChunk` テーブルが「外部ID → ファイル内の位�
 | `LayerFolder` の bit0 が立つ | フォルダー（`ComicFrameLineMipmap` があればコマ枠フォルダー） |
 | `TextLayerString` がある | テキストレイヤー（本文は UTF-8） |
 | `VectorObjectList.LayerId` にある | ベクターレイヤー |
+
+作品情報レイヤー（`LayerType = 800`）は `ComicStoryInfoType` が 1 = 作品名・話数・作者名、2 = ノンブル。レイヤーパレットには出ない。
+1 の `TextLayerString` に「作品名 N話」、`TextLayerStringArray` に作者名を持つ。
+
+テキストの書式 TLV の `0x32` は、CSP がその文字を描いた画像の `Offscreen.MainId`（列からは参照されず、`LayerId` だけでつながる）。
+CSP はこの id があると文字ではなくこの画像を表示するので、文字だけ書き換えると古い表示（例: テンプレートの「ユメノストラ 3話」）が残る。
+文字を変えたレイヤーと、別ファイルから写したテキストは `0x32` を 0 にする（CSP が描き直す）。
+
+ノンブル（`ComicStoryInfoType = 2`）は、CSP が開くときに番号（`ComicStoryNombreStart + ComicPageIndex`）と位置（綴じ側。左ページと右ページで左右反転）を
+ページに合わせ直し、テンプレートと違えば変更扱い（「*」）にする。`Canvas.CropFrameOptionFlag` も単ページの左 = 2、右 = 4（見開きは 17）。
+見開きの用紙にだけある `ComicStoryRightLayerCreated` / `ComicNombreRightLayerCreated` の列を単ページに足すと、右ページで作品情報が作り直される。
 
 その他の列: `LayerVisibility`（bit0 = 表示）、`LayerOpacity`（256 = 100%）、`LayerComposite`（合成モード、0 = 通常。他の値の対応は未解明）、
 `LayerOffsetX/Y`、`LayerClip`、`LayerLock`、`LayerRenderMipmap`（描画結果）、`LayerLayerMaskMipmap`（マスク）。
@@ -141,14 +175,16 @@ u32 0  u32 残りの長さ
 オブジェクト × n:
   ヘッダー（header_size バイト、観察値 92 / 96）:
     u32 header_size  u32 ?  u32 point_size(88)  u32 ?  u32 点の数  u32 フラグ
-    i32 外接矩形 x0 y0 x1 y1  … 以降は色・ブラシサイズらしき値（未解読）
+    i32 外接矩形 x0 y0 x1 y1  u32 × 3  色 u32 × 3  f64 不透明度
+    u32 ブラシスタイル ID など（1〜3 個、ヘッダーの長さの差はここ）  f64 ブラシサイズ（px）  u32 ?
   点 × 点の数（point_size バイトずつ）:
     f64 x  f64 y  i32 区間の外接矩形 x0 y0 x1 y1  … 筆圧・角の情報らしき値（未解読）
 ```
 
 - フラグ: 四角形とフキダシは `0x1111` / `0x3188`、開いた線は `0x11`。`0x1000` が「閉じた図形」と推測
 - 実ファイル 237 オブジェクトで、読み取り → 座標変換（等倍）→ 書き戻しが元のバイト列と一致
-- 線の太さを拡大に合わせて変える方法は未解明（今は座標だけ変換）
+- ブラシサイズはヘッダー末尾から 12 バイト目の f64（ヘッダー 88 / 92 / 96 バイトの 3 種で確認。ネーム枠 3.6px、ペン 25px など）。
+  点ごとの値（点の 36・40 バイト目の f32、観察値 0〜1）は筆圧による倍率らしく、分割ではブラシサイズだけを拡大率倍にする
 
 ### テキスト（`TextLayerAttributes` ほか、確認済み）
 
@@ -171,12 +207,26 @@ u32 0  u32 残りの長さ
 ### 未解明・要調査
 
 - 文字ブロックとフキダシの対応（CSP でフキダシ 2 つのテキストを作り、片方だけ動かして保存した差分で特定できる見込み）
-- ベクターの線幅・色の位置、`0x1000` 以外のフラグ
+- ベクターの色の並び（RGB の順か）、`0x1000` 以外のフラグ
 - `LayerComposite` の値と合成モードの対応
 - コマ枠フォルダーのマスクとコマ枠線（`ComicFrameLineMipmap`）
 - 縮小版ミップマップ・サムネイル・`CanvasPreview` を書き出し時に作り直す必要があるか
 - `CHNKHead` の内容、`ParamScheme` / `ElemScheme`（スキーマ定義らしい）の扱い
 - 保存した CSP のバージョンによる違い
+
+---
+
+## ネーム用紙の構成（観察例）
+
+実際のネーム作品（.cmc）では、ネーム用紙が見開きページ（594×420mm、600dpi、`PageFlag = 1`）として入っていました。
+
+- 用紙の左右それぞれに、4 行 × 2 見開き = 16 ページ分の枠（計 32 ページ）
+- 枠はベクターレイヤーの四角形。見開きの外枠（灰色）1 つと、その中のページ内枠 2 つで 1 組
+- 左半分の枠は、右半分の枠レイヤーを複製して `LayerOffsetX` だけ変えたもの
+- セリフはフキダシ無しのテキストレイヤー（4pt）、線はベクターレイヤー
+- 1 ページ分の外枠の縦横比は A3（ページのキャンバス）とほぼ同じ。内枠は仕上がり枠・基本枠のどちらとも正確には一致しない
+
+`plan` サブコマンドはこの構成を前提に、繰り返し現れる四角形からページ枠を求めます。
 
 ---
 
