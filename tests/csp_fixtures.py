@@ -8,6 +8,7 @@ Why: Real CSP files are large and contain the author's artwork, so they
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import io
 from pathlib import Path
 import sqlite3
 import struct
@@ -136,7 +137,7 @@ def _flatten(layers: list[FixtureLayer]) -> list[FixtureLayer]:
     return result
 
 
-def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], preview: bool = True,
+def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], preview: bool | Image.Image = True,
                double_page: bool = False, editable: bool = False) -> Path:
     """Write a minimal .clip file whose root folder contains ``layers``.
 
@@ -202,10 +203,19 @@ def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], 
                 "INSERT INTO VectorObjectList VALUES(?, ?, ?)",
                 (layer.main_id, layer.main_id, vector_id.encode() if vector_id else None),
             )
-    if preview:
+    if isinstance(preview, Image.Image):
+        buffer = io.BytesIO()
+        preview.save(buffer, format="PNG")
+        database.execute("INSERT INTO CanvasPreview VALUES(?)", (buffer.getvalue(),))
+    elif preview:
         database.execute("INSERT INTO CanvasPreview VALUES(?)", (b"\x89PNG fake",),)
     if editable:
         _add_editing_schema(database)
+        if double_page:  # CSP adds these for the second page's story info on spreads only
+            database.executescript(
+                "ALTER TABLE Canvas ADD COLUMN ComicStoryRightLayerCreated;"
+                "ALTER TABLE Canvas ADD COLUMN ComicNombreRightLayerCreated;"
+                "UPDATE Canvas SET ComicStoryRightLayerCreated = 1, ComicNombreRightLayerCreated = 1;")
     return _write_container(path, database, externals)
 
 
@@ -228,10 +238,19 @@ def _add_editing_schema(database: sqlite3.Connection) -> None:
     database.executescript(
         "ALTER TABLE Canvas ADD COLUMN ComicPageIndex;"
         "ALTER TABLE Canvas ADD COLUMN ComicIsLeftPage;"
-        "UPDATE Canvas SET ComicPageIndex = 0, ComicIsLeftPage = 1;"
+        "ALTER TABLE Canvas ADD COLUMN ComicStoryStoryName;"
+        "ALTER TABLE Canvas ADD COLUMN ComicStoryStoryIndex;"
+        "ALTER TABLE Canvas ADD COLUMN ComicStoryNombreStart;"
+        "ALTER TABLE Canvas ADD COLUMN CropFrameOptionFlag;"
+        "UPDATE Canvas SET ComicPageIndex = 0, ComicIsLeftPage = 1, ComicStoryStoryName = 'Template',"
+        " ComicStoryStoryIndex = 3, ComicStoryNombreStart = 1, CropFrameOptionFlag = 2;"
         "ALTER TABLE Layer ADD COLUMN LayerRenderThumbnail;"
         "ALTER TABLE Layer ADD COLUMN LayerUuid;"
+        "UPDATE Layer SET LayerUuid = 'fixture-layer-' || MainId;"
         "ALTER TABLE Layer ADD COLUMN VectorNormalStrokeIndex;"
+        "ALTER TABLE Layer ADD COLUMN ComicStoryInfoType;"
+        "UPDATE Layer SET ComicStoryInfoType = 1 WHERE LayerType = 800;"
+        "UPDATE Layer SET ComicStoryInfoType = 2 WHERE LayerType = 800 AND LayerName = '(ノンブル)';"
         "UPDATE Layer SET VectorNormalStrokeIndex = (SELECT MainId FROM VectorObjectList v WHERE v.LayerId = Layer.MainId);"
         "ALTER TABLE Mipmap ADD COLUMN LayerId;"
         "ALTER TABLE MipmapInfo ADD COLUMN LayerId;"
@@ -307,6 +326,7 @@ def build_cmc(path: Path, page_files: list[str], order: list[int] | None = None)
         "INSERT INTO Project VALUES('1.1.0', 1, 'Story', 'Author', 1, 1, 0, ?, 2, 182.0, 257.0, 600.0, 0, '')",
         (len(page_files),),
     )
+    database.execute("ALTER TABLE Project ADD COLUMN ComicStoryStoryIndex DEFAULT 3")
     node_ids = [index + 2 for index in range(len(page_files))]
     sequence = [node_ids[index] for index in order]
     database.execute("INSERT INTO CanvasNode VALUES(1, 0, 0, ?, 0, '', NULL)", (sequence[0],))

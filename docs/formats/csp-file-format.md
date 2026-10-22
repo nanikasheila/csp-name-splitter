@@ -39,6 +39,23 @@
 
 未解明: `SelectedIndex`、`CanvasIndex`。
 
+- `LinkWrite*`（年月日時分秒）はページファイルの更新日時、`LinkUnit` / `LinkWidth` / `LinkHeight` / `LinkResolution` はページの大きさのキャッシュらしい。
+  CSP が書いた実ファイルでも 0 や不自然な値の行があり、厳密には使われていないと推測
+- `MainId` の最大値は `ElemScheme`（`TableName = 'CanvasNode'`）の `MaxIndex` にも記録される
+
+### .cmc の書き出し（`split --cmc`）
+
+CSP で作った同じ作品の .cmc をテンプレートにして、`Project` 行（作品の設定）はそのまま残し、`CanvasNode` のページ行だけを作り直す。
+ページ行はテンプレートの最初のページ行を写してから、`LinkPath`・`NextIndex`・`PageFlag`（見開き）・`LinkWrite*`（ファイルの更新日時）・ページの大きさを書き換える。
+`MaxCanvasFileIndex` はページファイル名の番号の最大値にする。
+各ページの `Canvas` の作品情報（`ComicStory*`、`ComicBindPosition`）は、テンプレートのページではなく .cmc の `Project` の値で上書きする。
+
+### ページ一覧のサムネイル（`CanvasPreview`）
+
+`CanvasPreview` は 1 行で、`ImageData` が PNG（RGBA、A3 600dpi のページで 877×1240）。CSP EX は作品のページ一覧にこれを表示するらしく、
+テンプレートの白紙のプレビューのままだと全ページが白紙に見えた（CSP EX 5.1.4 で確認）。
+書き出しでは、ネーム用紙のプレビューからページ枠の部分を切り抜き、ページと同じ変換で貼り付ける。
+
 ---
 
 ## .clip（1ページ）
@@ -64,6 +81,8 @@ SQLite の `ExternalChunk` テーブルが「外部ID → ファイル内の位�
 `CanvasUnit`（2 = mm, 0 = px と推測）、`CanvasWidth` / `CanvasHeight`、`CanvasResolution`、`CanvasRootFolder`（ルートフォルダのレイヤーID）、
 トンボ（`CropFrame*`）、作品情報（`ComicStory*`、`.cmc` の値の写し）、`ComicPageIndex` など。
 
+- 基本枠は `CropFrameInnerWidth` / `CropFrameInnerHeight`（観察値 212×300mm）。`CropFrameInnerOffsetX/Y` は中央からのずれと推測（観察値はすべて 0、
+  `CropFrameInnerOffsetBasePosition` の意味は未解明）。分割では既定でネームの内枠をこの基本枠に合わせる
 - `ComicPageIndex` は作品内のページ位置（0 始まり、見開きは 2 ページ分）、`ComicIsLeftPage` は左ページかどうか。
   6 ファイルで「位置が 1 つ進むごとに左右が入れ替わる」ことと矛盾しない。右綴じ・`ComicStartPage = 0` の作品では位置 0 が左ページ。
   ページを書き出すときは、テンプレートのページの組を基準に左右を決める（綴じ方向の推測が要らない）
@@ -85,6 +104,17 @@ SQLite の `ExternalChunk` テーブルが「外部ID → ファイル内の位�
 | `LayerFolder` の bit0 が立つ | フォルダー（`ComicFrameLineMipmap` があればコマ枠フォルダー） |
 | `TextLayerString` がある | テキストレイヤー（本文は UTF-8） |
 | `VectorObjectList.LayerId` にある | ベクターレイヤー |
+
+作品情報レイヤー（`LayerType = 800`）は `ComicStoryInfoType` が 1 = 作品名・話数・作者名、2 = ノンブル。レイヤーパレットには出ない。
+1 の `TextLayerString` に「作品名 N話」、`TextLayerStringArray` に作者名を持つ。
+
+テキストの書式 TLV の `0x32` は、CSP がその文字を描いた画像の `Offscreen.MainId`（列からは参照されず、`LayerId` だけでつながる）。
+CSP はこの id があると文字ではなくこの画像を表示するので、文字だけ書き換えると古い表示（例: テンプレートの「ユメノストラ 3話」）が残る。
+文字を変えたレイヤーと、別ファイルから写したテキストは `0x32` を 0 にする（CSP が描き直す）。
+
+ノンブル（`ComicStoryInfoType = 2`）は、CSP が開くときに番号（`ComicStoryNombreStart + ComicPageIndex`）と位置（綴じ側。左ページと右ページで左右反転）を
+ページに合わせ直し、テンプレートと違えば変更扱い（「*」）にする。`Canvas.CropFrameOptionFlag` も単ページの左 = 2、右 = 4（見開きは 17）。
+見開きの用紙にだけある `ComicStoryRightLayerCreated` / `ComicNombreRightLayerCreated` の列を単ページに足すと、右ページで作品情報が作り直される。
 
 その他の列: `LayerVisibility`（bit0 = 表示）、`LayerOpacity`（256 = 100%）、`LayerComposite`（合成モード、0 = 通常。他の値の対応は未解明）、
 `LayerOffsetX/Y`、`LayerClip`、`LayerLock`、`LayerRenderMipmap`（描画結果）、`LayerLayerMaskMipmap`（マスク）。

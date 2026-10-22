@@ -6,8 +6,9 @@ Why: Stage 2 of the rebuild. Before writing any .clip, we decide for every
      plain data plan makes it testable and lets the user check it (JSON and
      a preview image) before files are generated.
 How: Page cells come from :mod:`name_layout`. By default each cell's inner
-     frame is scaled uniformly onto the page's trim frame (仕上がり線), centred;
-     ``fit="cell"`` fits the whole cell into the canvas instead. Contents are assigned by
+     frame is scaled uniformly onto the page's basic frame (基本枠), centred;
+     ``fit="trim"`` uses the trim frame (仕上がり線) instead and ``fit="cell"``
+     fits the whole cell into the canvas. Contents are assigned by
      where they are on the sheet:
 
      - raster layers: every cell that one of their stored 256px blocks
@@ -27,7 +28,7 @@ from .clip_reader import ClipDocument, ClipLayer
 from .name_layout import PageCell, Rect, as_rectangle, detect_page_cells, find_rectangles, template_rectangles
 
 Box = tuple[float, float, float, float]
-FITS = ("frame", "cell")
+FITS = ("basic", "trim", "cell")
 
 
 @dataclass(frozen=True)
@@ -70,8 +71,18 @@ class SheetPlan:
     page_width: int
     page_height: int
     pages: list[PlannedPage]
-    fit: str = "frame"
+    fit: str = "basic"
     trim: Rect | None = None
+    basic: Rect | None = None
+
+    @property
+    def target(self) -> Rect | None:
+        """The page frame each cell's inner frame is mapped onto (None for ``fit="cell"``)."""
+        if self.fit == "basic":
+            return self.basic or self.trim
+        if self.fit == "trim":
+            return self.trim
+        return None
     template_layer_ids: list[int] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
 
@@ -85,10 +96,10 @@ def fit_cell(cell: Rect, page_width: int, page_height: int) -> CellTransform:
 
 
 def fit_frame(frame: Rect, trim: Rect) -> CellTransform:
-    """Uniformly scale a cell's inner ``frame`` onto the page's ``trim`` frame, centred.
+    """Uniformly scale a cell's inner ``frame`` onto the page frame ``trim``, centred.
 
-    Why: The inner frame of a name template stands for the finished page
-         (仕上がり), so it should land on the trim line of the real page.
+    Why: The inner frame of a name template stands for a frame of the real
+         page (the basic frame 基本枠 by default, or the trim line 仕上がり).
     """
     scale = min(trim.width / frame.width, trim.height / frame.height)
     frame_x, frame_y = frame.center
@@ -96,19 +107,22 @@ def fit_frame(frame: Rect, trim: Rect) -> CellTransform:
     return CellTransform(scale=scale, dx=trim_x - frame_x * scale, dy=trim_y - frame_y * scale)
 
 
-def centered_trim(page_width: int, page_height: int, trim_width: int, trim_height: int) -> Rect:
-    """The trim frame of a page, centred on the canvas (CSP's default placement)."""
-    x0, y0 = (page_width - trim_width) / 2, (page_height - trim_height) / 2
+def centered_trim(page_width: int, page_height: int, trim_width: int, trim_height: int,
+                  offset: tuple[float, float] = (0, 0)) -> Rect:
+    """A page frame (trim or basic) centred on the canvas, moved by ``offset`` px."""
+    x0 = (page_width - trim_width) / 2 + offset[0]
+    y0 = (page_height - trim_height) / 2 + offset[1]
     return Rect(x0, y0, x0 + trim_width, y0 + trim_height)
 
 
 def plan_sheet(document: ClipDocument, page_width: int, page_height: int, *,
-               order: str = "rtl_ttb", first_page: int = 1, fit: str = "frame",
-               trim: Rect | None = None) -> SheetPlan:
+               order: str = "rtl_ttb", first_page: int = 1, fit: str = "basic",
+               trim: Rect | None = None, basic: Rect | None = None) -> SheetPlan:
     """Build the split plan of one name sheet.
 
-    ``fit="frame"`` maps each cell's inner frame onto ``trim`` (cells without
-    an inner frame fall back to ``fit="cell"``); ``fit="cell"`` fits the whole
+    ``fit="basic"`` maps each cell's inner frame onto ``basic`` (the basic
+    frame, falling back to ``trim``), ``fit="trim"`` onto ``trim``; cells
+    without an inner frame fall back to ``fit="cell"``, which fits the whole
     cell into the page canvas.
     """
     if fit not in FITS:
@@ -116,9 +130,11 @@ def plan_sheet(document: ClipDocument, page_width: int, page_height: int, *,
     rects = find_rectangles(document)
     cells = detect_page_cells(rects, document.canvas.width_px,
                               double_page=document.canvas.is_double_page, order=order)
-    plan = SheetPlan(page_width=page_width, page_height=page_height, pages=[], fit=fit, trim=trim)
-    if fit == "frame" and trim is None:
-        plan.warnings.append("No trim frame size known: cells are fitted to the whole page instead")
+    plan = SheetPlan(page_width=page_width, page_height=page_height, pages=[], fit=fit, trim=trim, basic=basic)
+    if fit == "basic" and basic is None and trim is not None:
+        plan.warnings.append("No basic frame size known: inner frames are fitted to the trim frame instead")
+    if fit != "cell" and plan.target is None:
+        plan.warnings.append(f"No {fit} frame size known: cells are fitted to the whole page instead")
     if not cells:
         plan.warnings.append("No page cells found: the sheet has no repeated vector rectangles")
         return plan
@@ -136,14 +152,14 @@ def plan_sheet(document: ClipDocument, page_width: int, page_height: int, *,
             transform=_transform(cell, plan),
             contents=tuple(per_cell[cell.index]),
         ))
-    if fit == "frame" and trim is not None and any(cell.frame is None for cell in cells):
+    if plan.target is not None and any(cell.frame is None for cell in cells):
         plan.warnings.append("Some cells have no inner frame: they are fitted to the whole page instead")
     return plan
 
 
 def _transform(cell: PageCell, plan: SheetPlan) -> CellTransform:
-    if plan.fit == "frame" and plan.trim is not None and cell.frame is not None:
-        return fit_frame(cell.frame, plan.trim)
+    if plan.target is not None and cell.frame is not None:
+        return fit_frame(cell.frame, plan.target)
     return fit_cell(cell.rect, plan.page_width, plan.page_height)
 
 

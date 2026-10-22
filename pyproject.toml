@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "csp-name-splitter"
-version = "1.0.0"
+version = "2.0.0"
 description = "Split CSP name images into per-page PNG outputs."
 readme = "README.md"
 license = {text = "MIT"}
@@ -15,7 +15,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-gui = ["flet>=0.20"]
+gui = ["flet>=0.80,<1.0"]
 test = ["pytest>=7.0"]
 lint = ["mypy>=1.0"]
 dev = ["pre-commit>=4.0", "pytest>=7.0", "mypy>=1.0"]

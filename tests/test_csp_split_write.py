@@ -1,16 +1,19 @@
-"""Tests for writing page .clip files from a name sheet.
+"""Tests for writing page .clip files and the .cmc work from a name sheet.
 
-Why: Stage 3 copies layers from a sheet into a page template. Only CSP can
-     confirm a file opens, but these tests check that what we write reads
-     back with the planned layers, positions and sizes, and that the input
-     files are never changed.
+Why: Stages 3 and 4 copy layers from a sheet into a page template and list
+     the pages in a .cmc. Only CSP can confirm a file opens, but these tests
+     check that what we write reads back with the planned layers, positions,
+     sizes and page order, and that the input files are never changed.
 """
 from __future__ import annotations
 
 import hashlib
+import io
 from pathlib import Path
+import sqlite3
+import struct
 
-from PIL import Image
+from PIL import Image, ImageChops
 import pytest
 
 from csp_fixtures import (
@@ -18,18 +21,26 @@ from csp_fixtures import (
     VECTOR_BRUSH_SIZE,
     FixtureLayer,
     build_clip,
+    build_cmc,
     build_text_attributes,
     rectangle,
 )
-from name_splitter.csp import read_clip
+from name_splitter.app.cli import main
+from name_splitter.csp import read_clip, read_cmc
 from name_splitter.csp.clip_editor import ClipEditor
+from name_splitter.csp.cmc_writer import write_cmc
 from name_splitter.csp.container import open_sqlite_bytes, read_csf_container
+from name_splitter.csp.container_writer import head_file_id
 from name_splitter.csp.page_writer import write_page
 from name_splitter.csp.split_plan import plan_sheet
-from name_splitter.csp.text_attributes import parse_text_attributes
+from name_splitter.csp.text_attributes import build_tlv, parse_text_attributes, parse_tlv
 
 SHEET_W, SHEET_H = 1600, 600
 PAGE_W, PAGE_H = 400, 560
+# The hidden ノンブル of a left page: one 10 px wide digit near the right (binding) edge.
+NOMBRE = build_tlv([(0x0B, struct.pack("<3I", 1, 0, 1)), (0x2A, struct.pack("<4i", 380, 540, 390, 550)),
+                    (0x3F, struct.pack("<2i", 10, 10)), (0x40, struct.pack("<8i", 0, 0, 1000, 0, 1000, 1000, 0, 1000)),
+                    (0x32, struct.pack("<i", 78))])
 RIGHT_SPREAD = [rectangle(840, 40, 1560, 560), rectangle(860, 60, 1190, 540), rectangle(1210, 60, 1540, 540)]
 
 
@@ -54,9 +65,12 @@ def sheet_path(tmp_path: Path) -> Path:
         FixtureLayer(main_id=23, name="セリフ", layer_type=0, text="あ",
                      text_attributes=build_text_attributes((900, 100, 960, 300), 4.0)),
     ]
+    preview = Image.new("RGBA", (SHEET_W // 2, SHEET_H // 2), (255, 255, 255, 255))
+    preview.paste((255, 0, 0, 255), (645, 145, 655, 155))  # the sketch dot, rendered at half size
     folder = tmp_path / "sheet"
     folder.mkdir()
-    return build_clip(folder / "sheet.clip", SHEET_W, SHEET_H, layers, double_page=True, editable=True)
+    return build_clip(folder / "sheet.clip", SHEET_W, SHEET_H, layers, preview=preview, double_page=True,
+                      editable=True)
 
 
 @pytest.fixture()
@@ -64,8 +78,18 @@ def template_path(tmp_path: Path) -> Path:
     blank = Image.new("RGBA", (PAGE_W, PAGE_H), (0, 0, 0, 0))
     folder = tmp_path / "template"
     folder.mkdir()
-    layers = [FixtureLayer(main_id=2, name="用紙", layer_type=1584), FixtureLayer(main_id=3, name="レイヤー 1", image=blank)]
-    return build_clip(folder / "page.clip", PAGE_W, PAGE_H, layers, editable=True)
+    story = build_tlv([(0x0B, struct.pack("<4I", 1, 0, len("作品 3話"), 26)), (0x20, struct.pack("<i", 900)),
+                       (0x32, struct.pack("<i", 77))])  # 0x32: CSP's cached rendering of the text
+    layers = [FixtureLayer(main_id=2, name="用紙", layer_type=1584), FixtureLayer(main_id=3, name="レイヤー 1", image=blank),
+              FixtureLayer(main_id=4, name="(作品情報)", layer_type=800, text="作品 3話", text_attributes=story),
+              FixtureLayer(main_id=5, name="(ノンブル)", layer_type=800, text="1", text_attributes=NOMBRE)]
+    preview = Image.new("RGBA", (PAGE_W // 2, PAGE_H // 2), (255, 255, 255, 255))
+    return build_clip(folder / "page.clip", PAGE_W, PAGE_H, layers, preview=preview, editable=True)
+
+
+def _canvas_value(path: Path, column: str) -> object:
+    database = open_sqlite_bytes(read_csf_container(path).sqlite_bytes)
+    return database.execute(f"SELECT {column} FROM Canvas").fetchone()[0]
 
 
 def _canvas_page(path: Path) -> tuple[int, int]:
@@ -117,12 +141,42 @@ def test_write_page_copies_planned_layers(tmp_path: Path, sheet_path: Path, temp
     assert line.brush_size == pytest.approx(VECTOR_BRUSH_SIZE * scale)
     assert _canvas_page(result.path) == (0, 1)
 
+    # The page thumbnail shows the cell's part of the sheet preview (half size here).
+    assert document.preview_png is not None
+    thumbnail = Image.open(io.BytesIO(document.preview_png)).convert("RGB")
+    red = Image.new("RGB", thumbnail.size, (255, 0, 0))
+    mask = Image.eval(ImageChops.difference(thumbnail, red).convert("L"), lambda value: 255 if value < 40 else 0)
+    rx0, ry0, rx1, ry1 = mask.getbbox() or (0, 0, 0, 0)
+    assert abs((rx0 + rx1) / 2 - (1300 * scale + dx) / 2) <= 2 and abs((ry0 + ry1) / 2 - (300 * scale + dy) / 2) <= 2
+
+
+def _nombre(path: Path) -> tuple[str, tuple[int, ...], int]:
+    database = open_sqlite_bytes(read_csf_container(path).sqlite_bytes)
+    string, attributes = database.execute(
+        "SELECT TextLayerString, TextLayerAttributes FROM Layer WHERE ComicStoryInfoType = 2").fetchone()
+    flag = database.execute("SELECT CropFrameOptionFlag FROM Canvas").fetchone()[0]
+    values = dict(parse_tlv(bytes(attributes)))
+    assert values[0x32] == struct.pack("<i", 0)  # the template's cached "1" is not shown
+    return bytes(string).decode("utf-8"), struct.unpack("<4i", values[0x2A]), flag
+
+
+def test_write_page_sets_nombre_and_side(tmp_path: Path, sheet_path: Path, template_path: Path) -> None:
+    sheet = read_clip(sheet_path)
+    page = plan_sheet(sheet, PAGE_W, PAGE_H, fit="cell").pages[0]
+    # Same side as the template (left): only the number changes, keeping the binding edge.
+    assert _nombre(write_page(template_path, sheet, page, tmp_path / "p11.clip", page_index=10).path) == (
+        "11", (370, 540, 390, 550), 2)
+    # A right page: CSP keeps the ノンブル at the binding edge, now on the left, and flags the side.
+    assert _nombre(write_page(template_path, sheet, page, tmp_path / "p2.clip", page_index=1).path) == (
+        "2", (10, 540, 20, 550), 4)
+
 
 def test_write_page_scales_text(tmp_path: Path, sheet_path: Path, template_path: Path) -> None:
     sheet = read_clip(sheet_path)
     plan = plan_sheet(sheet, PAGE_W, PAGE_H, fit="cell")
     page = next(page for page in plan.pages if any(content.name == "セリフ" for content in page.contents))
-    result = write_page(template_path, sheet, page, tmp_path / "text.clip", page_index=5)
+    result = write_page(template_path, sheet, page, tmp_path / "text.clip", page_index=5,
+                        canvas_values={"ComicStoryStoryName": "第4話", "NoSuchColumn": 1})
     document = read_clip(result.path)
     text_layer = next(layer for layer in document.iter_layers() if layer.name == "セリフ")
     database = open_sqlite_bytes(document.container.sqlite_bytes)
@@ -131,3 +185,77 @@ def test_write_page_scales_text(tmp_path: Path, sheet_path: Path, template_path:
     attributes = parse_text_attributes(bytes(blob))
     assert attributes.font_size_pt == pytest.approx(4.0 * page.transform.scale, abs=0.01)
     assert _canvas_page(result.path) == (5, 0)
+    assert _canvas_value(result.path, "ComicStoryStoryName") == "第4話"
+
+
+def test_write_cmc_lists_pages_in_order(tmp_path: Path, template_path: Path) -> None:
+    project_template = build_cmc(tmp_path / "template" / "work.cmc", ["page0001.clip"])
+    before = _digest(project_template)
+    out = tmp_path / "out"
+    out.mkdir()
+    pages = []
+    for number in (3, 1, 2):
+        page = out / f"page{number:04d}.clip"
+        page.write_bytes(template_path.read_bytes())
+        pages.append(page)
+    work = write_cmc(project_template, pages, out / "new.cmc")
+    project = read_cmc(work)
+    assert [page.file_name for page in project.pages] == ["page0003.clip", "page0001.clip", "page0002.clip"]
+    assert project.max_canvas_file_index == 3
+    assert project.story_name == "Story"
+    assert _digest(project_template) == before
+    with pytest.raises(ValueError):
+        write_cmc(project_template, [template_path], out / "bad.cmc")
+    with pytest.raises(ValueError):
+        write_cmc(project_template, [], out / "empty.cmc")
+
+
+def test_split_cli_writes_work(tmp_path: Path, sheet_path: Path, template_path: Path,
+                               capsys: pytest.CaptureFixture[str]) -> None:
+    build_cmc(sheet_path.parent / "name.cmc", ["sheet.clip"])
+    inputs = {path: _digest(path) for path in (sheet_path, template_path, sheet_path.parent / "name.cmc")}
+    out = tmp_path / "work"
+    code = main(["split", str(sheet_path), "--template", str(template_path), "--out-dir", str(out),
+                 "--fit", "cell", "--cmc", "第1話", "--story-index", "12"])
+    assert code == 0, capsys.readouterr().err
+    project = read_cmc(out / "第1話.cmc")
+    assert [page.file_name for page in project.pages] == [f"page{number:04d}.clip" for number in range(1, 5)]
+    assert [_canvas_page(out / page.file_name)[0] for page in project.pages] == [0, 1, 2, 3]
+    # Every page is its own file for CSP: distinct file ids and layer uuids.
+    containers = [read_csf_container(out / page.file_name) for page in project.pages]
+    assert len({head_file_id(container) for container in containers}) == 4
+    uuids = [uuid for container in containers
+             for (uuid,) in open_sqlite_bytes(container.sqlite_bytes).execute("SELECT LayerUuid FROM Layer")
+             if uuid]
+    assert len(uuids) == len(set(uuids)) > 4
+    # Pages keep the template's Canvas columns: spread-only columns from the sheet would
+    # make CSP rebuild the story info of right-hand pages on open.
+    for page in project.pages:
+        columns = {row[1] for row in open_sqlite_bytes(read_csf_container(out / page.file_name).sqlite_bytes)
+                   .execute("PRAGMA table_info(Canvas)")}
+        assert "ComicStoryRightLayerCreated" not in columns
+    # Story info comes from the work's .cmc, not from the template page.
+    assert _canvas_value(out / "page0001.clip", "ComicStoryStoryName") == "Story"
+    # --story-index overrides the episode number in the work and every page.
+    assert _canvas_value(out / "page0004.clip", "ComicStoryStoryIndex") == 12
+    # The 作品情報 text CSP displays follows the new episode number.
+    database = open_sqlite_bytes(read_csf_container(out / "page0001.clip").sqlite_bytes)
+    string, attributes = database.execute(
+        "SELECT TextLayerString, TextLayerAttributes FROM Layer WHERE ComicStoryInfoType = 1").fetchone()
+    assert bytes(string).decode("utf-8") == "作品 12話"
+    runs = dict(parse_tlv(bytes(attributes)))[0x0B]
+    assert struct.unpack("<4I", runs) == (1, 0, len("作品 12話"), 26)
+    # CSP would draw its cached image of "作品 3話" while 0x32 still points at it.
+    assert dict(parse_tlv(bytes(attributes)))[0x32] == struct.pack("<i", 0)
+    with sqlite3.connect(out / "第1話.cmc") as work:
+        assert work.execute("SELECT ComicStoryStoryIndex FROM Project").fetchone()[0] == 12
+    assert all(_digest(path) == digest for path, digest in inputs.items())
+
+
+def test_split_cli_refuses_input_folders(sheet_path: Path, template_path: Path) -> None:
+    code = main(["split", str(sheet_path), "--template", str(template_path), "--out-dir", str(sheet_path.parent)])
+    assert code == 2
+    # --cmc without a template .cmc next to the sheet
+    code = main(["split", str(sheet_path), "--template", str(template_path),
+                 "--out-dir", str(sheet_path.parent.parent / "out"), "--cmc", "x"])
+    assert code == 2
