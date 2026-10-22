@@ -8,9 +8,10 @@ Why: Stages 3 and 4 copy layers from a sheet into a page template and list
 from __future__ import annotations
 
 import hashlib
+import io
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageChops
 import pytest
 
 from csp_fixtures import (
@@ -57,9 +58,12 @@ def sheet_path(tmp_path: Path) -> Path:
         FixtureLayer(main_id=23, name="セリフ", layer_type=0, text="あ",
                      text_attributes=build_text_attributes((900, 100, 960, 300), 4.0)),
     ]
+    preview = Image.new("RGBA", (SHEET_W // 2, SHEET_H // 2), (255, 255, 255, 255))
+    preview.paste((255, 0, 0, 255), (645, 145, 655, 155))  # the sketch dot, rendered at half size
     folder = tmp_path / "sheet"
     folder.mkdir()
-    return build_clip(folder / "sheet.clip", SHEET_W, SHEET_H, layers, double_page=True, editable=True)
+    return build_clip(folder / "sheet.clip", SHEET_W, SHEET_H, layers, preview=preview, double_page=True,
+                      editable=True)
 
 
 @pytest.fixture()
@@ -68,7 +72,13 @@ def template_path(tmp_path: Path) -> Path:
     folder = tmp_path / "template"
     folder.mkdir()
     layers = [FixtureLayer(main_id=2, name="用紙", layer_type=1584), FixtureLayer(main_id=3, name="レイヤー 1", image=blank)]
-    return build_clip(folder / "page.clip", PAGE_W, PAGE_H, layers, editable=True)
+    preview = Image.new("RGBA", (PAGE_W // 2, PAGE_H // 2), (255, 255, 255, 255))
+    return build_clip(folder / "page.clip", PAGE_W, PAGE_H, layers, preview=preview, editable=True)
+
+
+def _canvas_value(path: Path, column: str) -> object:
+    database = open_sqlite_bytes(read_csf_container(path).sqlite_bytes)
+    return database.execute(f"SELECT {column} FROM Canvas").fetchone()[0]
 
 
 def _canvas_page(path: Path) -> tuple[int, int]:
@@ -120,12 +130,21 @@ def test_write_page_copies_planned_layers(tmp_path: Path, sheet_path: Path, temp
     assert line.brush_size == pytest.approx(VECTOR_BRUSH_SIZE * scale)
     assert _canvas_page(result.path) == (0, 1)
 
+    # The page thumbnail shows the cell's part of the sheet preview (half size here).
+    assert document.preview_png is not None
+    thumbnail = Image.open(io.BytesIO(document.preview_png)).convert("RGB")
+    red = Image.new("RGB", thumbnail.size, (255, 0, 0))
+    mask = Image.eval(ImageChops.difference(thumbnail, red).convert("L"), lambda value: 255 if value < 40 else 0)
+    rx0, ry0, rx1, ry1 = mask.getbbox() or (0, 0, 0, 0)
+    assert abs((rx0 + rx1) / 2 - (1300 * scale + dx) / 2) <= 2 and abs((ry0 + ry1) / 2 - (300 * scale + dy) / 2) <= 2
+
 
 def test_write_page_scales_text(tmp_path: Path, sheet_path: Path, template_path: Path) -> None:
     sheet = read_clip(sheet_path)
     plan = plan_sheet(sheet, PAGE_W, PAGE_H, fit="cell")
     page = next(page for page in plan.pages if any(content.name == "セリフ" for content in page.contents))
-    result = write_page(template_path, sheet, page, tmp_path / "text.clip", page_index=5)
+    result = write_page(template_path, sheet, page, tmp_path / "text.clip", page_index=5,
+                        canvas_values={"ComicStoryStoryName": "第4話", "NoSuchColumn": 1})
     document = read_clip(result.path)
     text_layer = next(layer for layer in document.iter_layers() if layer.name == "セリフ")
     database = open_sqlite_bytes(document.container.sqlite_bytes)
@@ -134,6 +153,7 @@ def test_write_page_scales_text(tmp_path: Path, sheet_path: Path, template_path:
     attributes = parse_text_attributes(bytes(blob))
     assert attributes.font_size_pt == pytest.approx(4.0 * page.transform.scale, abs=0.01)
     assert _canvas_page(result.path) == (5, 0)
+    assert _canvas_value(result.path, "ComicStoryStoryName") == "第4話"
 
 
 def test_write_cmc_lists_pages_in_order(tmp_path: Path, template_path: Path) -> None:
@@ -169,6 +189,8 @@ def test_split_cli_writes_work(tmp_path: Path, sheet_path: Path, template_path: 
     project = read_cmc(out / "第1話.cmc")
     assert [page.file_name for page in project.pages] == [f"page{number:04d}.clip" for number in range(1, 5)]
     assert [_canvas_page(out / page.file_name)[0] for page in project.pages] == [0, 1, 2, 3]
+    # Story info comes from the work's .cmc, not from the template page.
+    assert _canvas_value(out / "page0001.clip", "ComicStoryStoryName") == "Story"
     assert all(_digest(path) == digest for path, digest in inputs.items())
 
 

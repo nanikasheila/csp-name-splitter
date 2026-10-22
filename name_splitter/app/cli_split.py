@@ -15,7 +15,7 @@ from pathlib import Path
 import sys
 
 from name_splitter.csp import CspFormatError, read_clip
-from name_splitter.csp.cmc_writer import write_cmc
+from name_splitter.csp.cmc_writer import work_canvas_values, write_cmc
 from name_splitter.csp.name_layout import ORDERS
 from name_splitter.csp.page_writer import write_page
 from name_splitter.csp.split_plan import FITS, centered_trim, plan_sheet
@@ -73,9 +73,10 @@ def run_split_subcommand(args: argparse.Namespace) -> int:
         pages = [page for page in sorted(plan.pages, key=lambda item: item.number)
                  if (page.number in wanted if wanted is not None else bool(args.cmc or page.contents))]
         written = []
+        work_values = work_canvas_values(cmc_template) if args.cmc and cmc_template is not None else None
         for position, page in enumerate(pages):
             result = write_page(template_path, sheet, page, out_dir / args.name.format(page=page.number),
-                                page_index=position if args.cmc else None)
+                                page_index=position if args.cmc else None, canvas_values=work_values)
             written.append(result.path)
             print(f"Wrote {result.path} ({len(result.layer_ids)} layers)")
             for warning in result.warnings:

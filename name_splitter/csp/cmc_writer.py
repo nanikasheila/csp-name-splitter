@@ -62,6 +62,24 @@ def page_link(path: str | Path) -> PageLink:
         database.close()
 
 
+def work_canvas_values(path: str | Path) -> dict[str, object]:
+    """The work settings a .cmc shares with its pages' Canvas rows.
+
+    Why: Each page .clip keeps a copy of the work's story info (作品名, 話数,
+         作者名, ノンブル); pages made from another episode's template would
+         otherwise show that episode.
+    """
+    database = _load_template(Path(path))
+    try:
+        project = database.execute("SELECT * FROM Project").fetchone()
+        if project is None:
+            raise CspFormatError(f"Project row not found: {path}")
+        return {key: project[key] for key in project.keys()
+                if key.startswith("ComicStory") or key == "ComicBindPosition"}
+    finally:
+        database.close()
+
+
 def write_cmc(template: str | Path, pages: Sequence[str | Path], output: str | Path) -> Path:
     """Write ``output`` (.cmc) listing ``pages`` in order, with ``template``'s settings.
 

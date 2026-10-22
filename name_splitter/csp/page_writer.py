@@ -11,6 +11,7 @@ How: A CSP-made empty page of the same work is the template. The sheet's
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import io
 import math
 from pathlib import Path
 import sqlite3
@@ -43,14 +44,18 @@ class PageResult:
 
 
 def write_page(template: str | Path, sheet: ClipDocument, page: PlannedPage, output: str | Path,
-               page_index: int | None = None) -> PageResult:
+               page_index: int | None = None, canvas_values: dict[str, object] | None = None) -> PageResult:
     """Write ``page`` of ``sheet`` into a copy of ``template`` saved as ``output``.
 
     ``page_index`` is the 0-based position of the page in the work (CSP's
     ``ComicPageIndex``, used for the ノンブル); it defaults to ``page.number - 1``.
+    ``canvas_values`` overrides Canvas columns the template has (for example
+    the work's ``ComicStory*`` settings from its .cmc).
     """
     editor = ClipEditor(template)
     _set_page_index(editor.db, page.number - 1 if page_index is None else page_index)
+    if canvas_values:
+        _set_canvas_values(editor.db, canvas_values)
     source = open_sqlite_bytes(sheet.container.sqlite_bytes)
     merge_schema(editor.db, source, list(SCHEMA_TABLES))
     _share_rows(editor.db, source)
@@ -66,6 +71,7 @@ def write_page(template: str | Path, sheet: ClipDocument, page: PlannedPage, out
         new_id = _add_content(editor, source, sheet, content, page.transform, result.warnings)
         editor.append_to_folder(parent, new_id)
         result.layer_ids.append(new_id)
+    _update_preview(editor.db, sheet, page)
     editor.save(output)
     return result
 
@@ -137,6 +143,55 @@ def _set_page_index(db: sqlite3.Connection, index: int) -> None:
     template_index, template_left = db.execute("SELECT ComicPageIndex, ComicIsLeftPage FROM Canvas").fetchone()
     left = bool(template_left) == ((index - int(template_index or 0)) % 2 == 0)
     db.execute("UPDATE Canvas SET ComicPageIndex = ?, ComicIsLeftPage = ?", (index, int(left)))
+
+
+def _set_canvas_values(db: sqlite3.Connection, values: dict[str, object]) -> None:
+    known = set(column_names(db, "Canvas"))
+    for column, value in values.items():
+        if column in known:
+            db.execute(f'UPDATE Canvas SET "{column}" = ?', (value,))
+
+
+def _update_preview(db: sqlite3.Connection, sheet: ClipDocument, page: PlannedPage) -> None:
+    """Draw the page's part of the sheet preview onto the page preview.
+
+    Why: CSP shows ``CanvasPreview`` as the page thumbnail in a work's page
+         list without opening the page; the template's preview is blank.
+    How: The sheet preview was rendered by CSP, so cropping the cell from it
+         and placing it with the cell transform gives a faithful thumbnail
+         (the name frames inside the cell are included).
+    """
+    if "CanvasPreview" not in table_names(db) or not sheet.preview_png:
+        return
+    row = db.execute("SELECT rowid, ImageData FROM CanvasPreview ORDER BY rowid LIMIT 1").fetchone()
+    canvas = db.execute("SELECT CanvasWidth, CanvasHeight, CanvasResolution, CanvasUnit FROM Canvas").fetchone()
+    if row is None or not row[1]:
+        return
+    try:
+        preview = Image.open(io.BytesIO(bytes(row[1]))).convert("RGBA")
+        source = Image.open(io.BytesIO(sheet.preview_png)).convert("RGBA")
+    except OSError:
+        return
+    page_width = _canvas_width_px(canvas)
+    if page_width <= 0 or sheet.canvas.width_px <= 0:
+        return
+    to_preview = preview.width / page_width
+    from_sheet = source.width / sheet.canvas.width_px
+    cell = page.cell.rect
+    crop = source.crop((round(cell.x0 * from_sheet), round(cell.y0 * from_sheet),
+                        round(cell.x1 * from_sheet), round(cell.y1 * from_sheet)))
+    x0, y0, x1, y1 = (value * to_preview for value in page.transform.map_box((cell.x0, cell.y0, cell.x1, cell.y1)))
+    size = (max(round(x1 - x0), 1), max(round(y1 - y0), 1))
+    preview.paste(crop.resize(size, Image.Resampling.LANCZOS), (round(x0), round(y0)))
+    buffer = io.BytesIO()
+    preview.save(buffer, format="PNG")
+    db.execute("UPDATE CanvasPreview SET ImageData = ? WHERE rowid = ?", (buffer.getvalue(), row[0]))
+
+
+def _canvas_width_px(row: tuple[float, float, float, int]) -> float:
+    width, _, resolution, unit = row
+    per_inch = {2: 25.4, 1: 2.54, 3: 1.0, 5: 72.0}.get(int(unit))
+    return float(width) if per_inch is None else float(width) * float(resolution) / per_inch
 
 
 def _share_rows(target: sqlite3.Connection, source: sqlite3.Connection) -> None:

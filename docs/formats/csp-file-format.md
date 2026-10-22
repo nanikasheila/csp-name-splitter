@@ -48,6 +48,13 @@
 CSP で作った同じ作品の .cmc をテンプレートにして、`Project` 行（作品の設定）はそのまま残し、`CanvasNode` のページ行だけを作り直す。
 ページ行はテンプレートの最初のページ行を写してから、`LinkPath`・`NextIndex`・`PageFlag`（見開き）・`LinkWrite*`（ファイルの更新日時）・ページの大きさを書き換える。
 `MaxCanvasFileIndex` はページファイル名の番号の最大値にする。
+各ページの `Canvas` の作品情報（`ComicStory*`、`ComicBindPosition`）は、テンプレートのページではなく .cmc の `Project` の値で上書きする。
+
+### ページ一覧のサムネイル（`CanvasPreview`）
+
+`CanvasPreview` は 1 行で、`ImageData` が PNG（RGBA、A3 600dpi のページで 877×1240）。CSP EX は作品のページ一覧にこれを表示するらしく、
+テンプレートの白紙のプレビューのままだと全ページが白紙に見えた（CSP EX 5.1.4 で確認）。
+書き出しでは、ネーム用紙のプレビューからページ枠の部分を切り抜き、ページと同じ変換で貼り付ける。
 
 ---
 

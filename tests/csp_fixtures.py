@@ -8,6 +8,7 @@ Why: Real CSP files are large and contain the author's artwork, so they
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import io
 from pathlib import Path
 import sqlite3
 import struct
@@ -136,7 +137,7 @@ def _flatten(layers: list[FixtureLayer]) -> list[FixtureLayer]:
     return result
 
 
-def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], preview: bool = True,
+def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], preview: bool | Image.Image = True,
                double_page: bool = False, editable: bool = False) -> Path:
     """Write a minimal .clip file whose root folder contains ``layers``.
 
@@ -202,7 +203,11 @@ def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], 
                 "INSERT INTO VectorObjectList VALUES(?, ?, ?)",
                 (layer.main_id, layer.main_id, vector_id.encode() if vector_id else None),
             )
-    if preview:
+    if isinstance(preview, Image.Image):
+        buffer = io.BytesIO()
+        preview.save(buffer, format="PNG")
+        database.execute("INSERT INTO CanvasPreview VALUES(?)", (buffer.getvalue(),))
+    elif preview:
         database.execute("INSERT INTO CanvasPreview VALUES(?)", (b"\x89PNG fake",),)
     if editable:
         _add_editing_schema(database)
@@ -228,7 +233,8 @@ def _add_editing_schema(database: sqlite3.Connection) -> None:
     database.executescript(
         "ALTER TABLE Canvas ADD COLUMN ComicPageIndex;"
         "ALTER TABLE Canvas ADD COLUMN ComicIsLeftPage;"
-        "UPDATE Canvas SET ComicPageIndex = 0, ComicIsLeftPage = 1;"
+        "ALTER TABLE Canvas ADD COLUMN ComicStoryStoryName;"
+        "UPDATE Canvas SET ComicPageIndex = 0, ComicIsLeftPage = 1, ComicStoryStoryName = 'Template';"
         "ALTER TABLE Layer ADD COLUMN LayerRenderThumbnail;"
         "ALTER TABLE Layer ADD COLUMN LayerUuid;"
         "ALTER TABLE Layer ADD COLUMN VectorNormalStrokeIndex;"
