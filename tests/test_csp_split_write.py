@@ -39,7 +39,8 @@ SHEET_W, SHEET_H = 1600, 600
 PAGE_W, PAGE_H = 400, 560
 # The hidden ノンブル of a left page: one 10 px wide digit near the right (binding) edge.
 NOMBRE = build_tlv([(0x0B, struct.pack("<3I", 1, 0, 1)), (0x2A, struct.pack("<4i", 380, 540, 390, 550)),
-                    (0x3F, struct.pack("<2i", 10, 10)), (0x40, struct.pack("<8i", 0, 0, 1000, 0, 1000, 1000, 0, 1000))])
+                    (0x3F, struct.pack("<2i", 10, 10)), (0x40, struct.pack("<8i", 0, 0, 1000, 0, 1000, 1000, 0, 1000)),
+                    (0x32, struct.pack("<i", 78))])
 RIGHT_SPREAD = [rectangle(840, 40, 1560, 560), rectangle(860, 60, 1190, 540), rectangle(1210, 60, 1540, 540)]
 
 
@@ -77,7 +78,8 @@ def template_path(tmp_path: Path) -> Path:
     blank = Image.new("RGBA", (PAGE_W, PAGE_H), (0, 0, 0, 0))
     folder = tmp_path / "template"
     folder.mkdir()
-    story = build_tlv([(0x0B, struct.pack("<4I", 1, 0, len("作品 3話"), 26)), (0x20, struct.pack("<i", 900))])
+    story = build_tlv([(0x0B, struct.pack("<4I", 1, 0, len("作品 3話"), 26)), (0x20, struct.pack("<i", 900)),
+                       (0x32, struct.pack("<i", 77))])  # 0x32: CSP's cached rendering of the text
     layers = [FixtureLayer(main_id=2, name="用紙", layer_type=1584), FixtureLayer(main_id=3, name="レイヤー 1", image=blank),
               FixtureLayer(main_id=4, name="(作品情報)", layer_type=800, text="作品 3話", text_attributes=story),
               FixtureLayer(main_id=5, name="(ノンブル)", layer_type=800, text="1", text_attributes=NOMBRE)]
@@ -153,7 +155,9 @@ def _nombre(path: Path) -> tuple[str, tuple[int, ...], int]:
     string, attributes = database.execute(
         "SELECT TextLayerString, TextLayerAttributes FROM Layer WHERE ComicStoryInfoType = 2").fetchone()
     flag = database.execute("SELECT CropFrameOptionFlag FROM Canvas").fetchone()[0]
-    return bytes(string).decode("utf-8"), struct.unpack("<4i", dict(parse_tlv(bytes(attributes)))[0x2A]), flag
+    values = dict(parse_tlv(bytes(attributes)))
+    assert values[0x32] == struct.pack("<i", 0)  # the template's cached "1" is not shown
+    return bytes(string).decode("utf-8"), struct.unpack("<4i", values[0x2A]), flag
 
 
 def test_write_page_sets_nombre_and_side(tmp_path: Path, sheet_path: Path, template_path: Path) -> None:
@@ -241,6 +245,8 @@ def test_split_cli_writes_work(tmp_path: Path, sheet_path: Path, template_path: 
     assert bytes(string).decode("utf-8") == "作品 12話"
     runs = dict(parse_tlv(bytes(attributes)))[0x0B]
     assert struct.unpack("<4I", runs) == (1, 0, len("作品 12話"), 26)
+    # CSP would draw its cached image of "作品 3話" while 0x32 still points at it.
+    assert dict(parse_tlv(bytes(attributes)))[0x32] == struct.pack("<i", 0)
     with sqlite3.connect(out / "第1話.cmc") as work:
         assert work.execute("SELECT ComicStoryStoryIndex FROM Project").fetchone()[0] == 12
     assert all(_digest(path) == digest for path, digest in inputs.items())

@@ -32,6 +32,10 @@ ATTR_BBOX = 0x2A
 ATTR_FONT_NAME = 0x39
 ATTR_BLOCK_SIZE = 0x3F
 ATTR_QUAD = 0x40
+# MainId of the Offscreen holding CSP's own rendering of the text block (linked to the layer by
+# LayerId only). CSP draws that cached image instead of the text while the id is set; 0 makes it
+# render the text again.
+ATTR_RENDER_CACHE = 0x32
 FONT_SIZE_UNIT = 100
 
 TLV_HEAD = struct.Struct("<II")
@@ -102,7 +106,8 @@ def transform_text_attributes(blob: bytes, scale: float, dx: float, dy: float) -
     Why: A text block moves with its page cell; its font grows with the
          cell so the page keeps the proportions of the name sheet.
     How: Rewrites ids 0x2a (bbox), 0x20 (font size), 0x3f (block size) and
-         0x40 (quad). Everything else is copied unchanged.
+         0x40 (quad), and clears 0x32 (the cached rendering, which belongs to
+         the source file). Everything else is copied unchanged.
     """
     if scale <= 0:
         raise ValueError("scale must be positive")
@@ -118,8 +123,17 @@ def transform_text_attributes(blob: bytes, scale: float, dx: float, dy: float) -
         elif attribute_id in (ATTR_FONT_SIZE, ATTR_BLOCK_SIZE, ATTR_QUAD) and value and len(value) % 4 == 0:
             numbers = struct.unpack(f"<{len(value) // 4}i", value)
             value = struct.pack(f"<{len(numbers)}i", *(round(number * scale) for number in numbers))
+        elif attribute_id == ATTR_RENDER_CACHE and len(value) == 4:
+            value = struct.pack("<i", 0)
         items.append((attribute_id, value))
     return build_tlv(items)
+
+
+def clear_render_cache(blob: bytes) -> bytes:
+    """Return ``blob`` with the cached-rendering id (0x32) set to 0, so CSP draws the text anew."""
+    return build_tlv([(attribute_id, struct.pack("<i", 0) if attribute_id == ATTR_RENDER_CACHE and len(value) == 4
+                       else value) for attribute_id, value in parse_tlv(blob)])
+
 
 
 def _unpack_bbox(value: bytes) -> BBox:

@@ -27,7 +27,8 @@ from .clip_schema import column_names, merge_schema, table_names
 from .container import open_sqlite_bytes
 from .errors import CspFormatError
 from .split_plan import CellTransform, PlannedContent, PlannedPage
-from .text_attributes import build_tlv, parse_tlv, split_attribute_array, transform_text_attributes
+from .text_attributes import (build_tlv, clear_render_cache, parse_tlv, split_attribute_array,
+                              transform_text_attributes)
 from .vector import select_vector_objects, transform_vector_data
 
 # Not Canvas: a spread sheet has ComicStory/NombreRightLayerCreated columns, and a single right
@@ -191,7 +192,7 @@ def _mirror_nombre(db: sqlite3.Connection) -> None:
         def mirror(x0: int, x1: int) -> tuple[int, int]:
             return canvas_width - (x1 + offset) - offset, canvas_width - (x0 + offset) - offset
 
-        _edit_nombre_blocks(db, row, lambda items: _map_bbox_x(items, mirror))
+        _edit_text_blocks(db, row, lambda items: _map_bbox_x(items, mirror))
 
 
 def _update_nombre(db: sqlite3.Connection) -> None:
@@ -243,8 +244,9 @@ def _update_nombre(db: sqlite3.Connection) -> None:
         if isinstance(row["TextLayerAttributes"], bytes):
             db.execute("UPDATE Layer SET TextLayerAttributes = ? WHERE MainId = ?",
                        (_move_run_length(row["TextLayerAttributes"], len(number) - len(old)), row["MainId"]))
-        _edit_nombre_blocks(db, db.execute("SELECT * FROM Layer WHERE MainId = ?", (row["MainId"],)).fetchone(),
+        _edit_text_blocks(db, db.execute("SELECT * FROM Layer WHERE MainId = ?", (row["MainId"],)).fetchone(),
                             resize)
+        _drop_render_cache(db, int(row["MainId"]))
 
 
 def _map_bbox_x(items: list[tuple[int, bytes]], change: Callable[[int, int], tuple[int, int]]) -> list[tuple[int, bytes]]:
@@ -258,7 +260,7 @@ def _map_bbox_x(items: list[tuple[int, bytes]], change: Callable[[int, int], tup
     return mapped
 
 
-def _edit_nombre_blocks(db: sqlite3.Connection, row: sqlite3.Row,
+def _edit_text_blocks(db: sqlite3.Connection, row: sqlite3.Row,
                         edit: Callable[[list[tuple[int, bytes]]], list[tuple[int, bytes]]]) -> None:
     """Apply ``edit`` to the TLV items of every attribute blob of one text layer."""
     keys = row.keys()
@@ -295,9 +297,10 @@ def _replace_story_index(db: sqlite3.Connection, old: int, new: int) -> None:
     Why: CSP shows the text stored in the story info layer (for example
          "ユメノストラ 3話") rather than rebuilding it from the Canvas settings,
          so a template from another episode keeps showing that episode.
-    How: Replaces "<old>話" with "<new>話" in ``TextLayerString`` and moves
+    How: Replaces "<old>話" with "<new>話" in ``TextLayerString``, moves
          the character count of its single style run (TLV 0x0b, u32 run
-         count, u32 start, u32 length, ...) by the change in length.
+         count, u32 start, u32 length, ...) by the change in length, and
+         clears the cached rendering of the text (TLV 0x32).
     """
     if "ComicStoryInfoType" not in column_names(db, "Layer"):
         return
@@ -315,6 +318,18 @@ def _replace_story_index(db: sqlite3.Connection, old: int, new: int) -> None:
             values["TextLayerAttributes"] = _move_run_length(attributes, len(changed) - len(text))
         for column, value in values.items():
             db.execute(f'UPDATE Layer SET "{column}" = ? WHERE MainId = ?', (value, layer_id))
+        _drop_render_cache(db, layer_id)
+
+
+def _drop_render_cache(db: sqlite3.Connection, layer_id: int) -> None:
+    """Make CSP draw a story info / ノンブル text anew instead of its cached image.
+
+    Why: CSP shows the image cached in the file (TLV 0x32 → Offscreen) rather
+         than the text, so a changed text kept showing the template's
+         "… 3話" or page number.
+    """
+    row = db.execute("SELECT * FROM Layer WHERE MainId = ?", (layer_id,)).fetchone()
+    _edit_text_blocks(db, row, lambda items: parse_tlv(clear_render_cache(build_tlv(items))))
 
 
 def _move_run_length(blob: bytes, delta: int) -> bytes:
