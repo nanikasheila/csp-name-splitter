@@ -12,6 +12,13 @@ How: Copies the template page (only read) into ``out_dir``:
      - s3_canvas.clip   Canvas ComicStoryStoryName → "テストテスト", ComicStoryStoryIndex → 4
      - s4_both.clip     s2 and s3 together
      - s5_no_render.clip s4 plus the story info layers' render mipmaps cleared
+     - s8_inplace.clip  s1, then the live text bytes patched in place (no SQLite rewrite)
+     - s9_vacuum.clip   s4, then VACUUM (no stale copy of the old text left in the file)
+     - s10_remnant.clip s1, then only the stale copy of the text patched to "ゴミゴミゴミ 9話"
+
+     s1-s5 all still showed the template's "… 3話"; the only other copy of that
+     text in those files is a stale one inside a SQLite page, so s8-s10 tell
+     whether CSP shows the live row, the stale bytes, or something outside the file.
 
 Usage::
 
@@ -30,6 +37,54 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from name_splitter.csp.clip_editor import ClipEditor  # noqa: E402
 
 NAME = "テストテスト"  # as many UTF-16 units as "ユメノストラ", so style runs stay valid
+JUNK = "ゴミゴミゴミ"  # same UTF-8 length as NAME, for in-place patches
+
+
+def _story_rows(editor: ClipEditor) -> list[tuple[int, bytes]]:
+    return [(layer_id, bytes(text)) for layer_id, text in editor.db.execute(
+        "SELECT MainId, TextLayerString FROM Layer WHERE ComicStoryInfoType = 1").fetchall()]
+
+
+def _offsets(raw: bytes, key: bytes) -> list[int]:
+    found, start = [], 0
+    while (index := raw.find(key, start)) != -1:
+        found.append(index)
+        start = index + 1
+    return found
+
+
+def _live_text(path: Path, layer_id: int) -> bytes:
+    return bytes(ClipEditor(path).db.execute(
+        "SELECT TextLayerString FROM Layer WHERE MainId = ?", (layer_id,)).fetchone()[0])
+
+
+def _patched(template: str, out: Path, live: bool, stale: bool) -> Path:
+    """Copy the template with new ids, then patch the story text bytes in the file itself."""
+    editor = ClipEditor(template)
+    editor.renew_ids()
+    (layer_id, text), *_ = _story_rows(editor)
+    path = editor.save(out)
+    raw = bytearray(path.read_bytes())
+    old_name = text.decode("utf-8").split(" ")[0].encode("utf-8")
+    new_text = text.replace(old_name, NAME.encode("utf-8")).replace("3話".encode(), "4話".encode())
+    junk = text.replace(old_name, JUNK.encode("utf-8")).replace("3話".encode(), "9話".encode())
+    assert len(new_text) == len(text) == len(junk), "names must have the same UTF-8 length"
+    for offset in _offsets(bytes(raw), text):
+        probe = bytearray(raw)
+        probe[offset:offset + len(text)] = junk
+        out.write_bytes(probe)
+        is_live = _live_text(out, layer_id) == junk
+        if is_live and live:
+            raw[offset:offset + len(text)] = new_text
+        if not is_live and stale:
+            raw[offset:offset + len(text)] = junk
+    if live:  # the Canvas row's story name too ("ユメノストラ" followed by its record bytes)
+        for offset in _offsets(bytes(raw), old_name):
+            if raw[offset:offset + len(text)] != new_text:
+                raw[offset:offset + len(old_name)] = NAME.encode("utf-8")
+    out.write_bytes(raw)
+    print(f"Wrote {out} (live text: {_live_text(out, layer_id).decode('utf-8')})")
+    return out
 
 
 def main() -> int:
@@ -48,6 +103,7 @@ def main() -> int:
         "s3_canvas": (False, True, False),
         "s4_both": (True, True, False),
         "s5_no_render": (True, True, True),
+        "s9_vacuum": (True, True, False),
     }
     for name, (string, canvas, clear) in variants.items():
         editor = ClipEditor(args.template)
@@ -64,8 +120,13 @@ def main() -> int:
         if clear:
             for (layer_id,) in editor.db.execute("SELECT MainId FROM Layer WHERE ComicStoryInfoType != 0").fetchall():
                 editor.set_layer_image(layer_id, Image.new("RGBA", (1, 1), (0, 0, 0, 0)))
+        if name == "s9_vacuum":
+            editor.db.commit()
+            editor.db.execute("VACUUM")
         path = editor.save(out_dir / f"{name}.clip")
         print(f"Wrote {path}")
+    _patched(args.template, out_dir / "s8_inplace.clip", live=True, stale=False)
+    _patched(args.template, out_dir / "s10_remnant.clip", live=False, stale=True)
     return 0
 
 
