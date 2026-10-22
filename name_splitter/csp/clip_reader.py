@@ -56,6 +56,7 @@ class ClipCanvas:
     width_px: int
     height_px: int
     is_double_page: bool
+    crop_size_px: tuple[int, int] | None = None
 
     @property
     def single_page_width_px(self) -> int:
@@ -236,7 +237,21 @@ def _build_canvas(row: sqlite3.Row) -> ClipCanvas:
         width_px=_to_pixels(width, unit, resolution),
         height_px=_to_pixels(height, unit, resolution),
         is_double_page=bool(row["CanvasDoublePage"]) if "CanvasDoublePage" in row.keys() else False,
+        crop_size_px=_crop_size(row, resolution),
     )
+
+
+def _crop_size(row: sqlite3.Row, resolution: float) -> tuple[int, int] | None:
+    """Trim (仕上がり) frame size of one page in pixels, if the canvas has one."""
+    keys = row.keys()
+    if "CropFrameWidth" not in keys or "CropFrameHeight" not in keys:
+        return None
+    width, height = float(row["CropFrameWidth"] or 0), float(row["CropFrameHeight"] or 0)
+    if width <= 0 or height <= 0:
+        return None
+    unit_kind = int(row["CropFrameUnitKind"] or 0) if "CropFrameUnitKind" in keys else 0
+    unit = CANVAS_UNIT_NAMES.get(unit_kind, "px")
+    return _to_pixels(width, unit, resolution), _to_pixels(height, unit, resolution)
 
 
 def _to_pixels(value: float, unit: str, resolution: float) -> int:
