@@ -16,9 +16,15 @@ How: Copies the template page (only read) into ``out_dir``:
      - s9_vacuum.clip   s4, then VACUUM (no stale copy of the old text left in the file)
      - s10_remnant.clip s1, then only the stale copy of the text patched to "ゴミゴミゴミ 9話"
 
+     - s11_length.clip  s4 with "… 12話": the text and its style run get one character longer
+     - s12_bbox.clip    s4 with the text block's bounding box (TLV 0x2a) widened by 1 px
+
      s1-s5 all still showed the template's "… 3話"; the only other copy of that
      text in those files is a stale one inside a SQLite page, so s8-s10 tell
      whether CSP shows the live row, the stale bytes, or something outside the file.
+     s8-s10 still showed "… 3話" (s9 has no "ユメノストラ" anywhere), so CSP takes it
+     from outside the file. s11/s12 test whether that lookup is keyed by the
+     unchanged text attributes (a layout cache): only their attributes differ.
 
 Usage::
 
@@ -27,6 +33,7 @@ Usage::
 from __future__ import annotations
 
 import argparse
+import struct
 from pathlib import Path
 import sys
 
@@ -35,6 +42,7 @@ from PIL import Image
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from name_splitter.csp.clip_editor import ClipEditor  # noqa: E402
+from name_splitter.csp.text_attributes import build_tlv, parse_tlv  # noqa: E402
 
 NAME = "テストテスト"  # as many UTF-16 units as "ユメノストラ", so style runs stay valid
 JUNK = "ゴミゴミゴミ"  # same UTF-8 length as NAME, for in-place patches
@@ -125,6 +133,25 @@ def main() -> int:
             editor.db.execute("VACUUM")
         path = editor.save(out_dir / f"{name}.clip")
         print(f"Wrote {path}")
+    for name, index, widen in (("s11_length", 12, 0), ("s12_bbox", 4, 1)):
+        editor = ClipEditor(args.template)
+        editor.renew_ids()
+        editor.db.execute("UPDATE Canvas SET ComicStoryStoryName = ?, ComicStoryStoryIndex = ?", (NAME, index))
+        for layer_id, text, attributes in editor.db.execute(
+                "SELECT MainId, TextLayerString, TextLayerAttributes FROM Layer WHERE ComicStoryInfoType = 1").fetchall():
+            new = f"{NAME} {index}話"
+            items = []
+            for tag, value in parse_tlv(bytes(attributes)):
+                if tag == 0x0B:
+                    count, start, _length = struct.unpack_from("<3I", value)
+                    value = struct.pack("<3I", count, start, len(new.encode("utf-16-le")) // 2) + value[12:]
+                if tag == 0x2A and widen:
+                    x0, y0, x1, y1 = struct.unpack("<4i", value)
+                    value = struct.pack("<4i", x0, y0, x1 + widen, y1)
+                items.append((tag, value))
+            editor.db.execute("UPDATE Layer SET TextLayerString = ?, TextLayerAttributes = ? WHERE MainId = ?",
+                              (new.encode("utf-8"), build_tlv(items), layer_id))
+        print(f"Wrote {editor.save(out_dir / f'{name}.clip')}")
     _patched(args.template, out_dir / "s8_inplace.clip", live=True, stale=False)
     _patched(args.template, out_dir / "s10_remnant.clip", live=False, stale=True)
     return 0
