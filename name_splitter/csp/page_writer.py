@@ -55,6 +55,7 @@ def write_page(template: str | Path, sheet: ClipDocument, page: PlannedPage, out
     the work's ``ComicStory*`` settings from its .cmc).
     """
     editor = ClipEditor(template)
+    editor.renew_ids()
     _set_page_index(editor.db, page.number - 1 if page_index is None else page_index)
     if canvas_values:
         old_index = _canvas_value(editor.db, "ComicStoryStoryIndex")

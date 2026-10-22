@@ -123,6 +123,18 @@ class ClipEditor:
         self.canvas_id = int(canvas[0])
         self.root_id = int(canvas[1])
 
+    def renew_ids(self) -> None:
+        """Give the file and the template's layers new unique ids.
+
+        Why: CSP gives every page file its own file id (CHNKHead) and layer
+             uuids. Pages written from one template would otherwise share
+             them, and CSP may then treat different pages as the same file.
+        """
+        self.file_id = uuid.uuid4().bytes
+        if "LayerUuid" in column_names(self.db, "Layer"):
+            for (layer_id,) in self.db.execute("SELECT MainId FROM Layer WHERE LayerUuid IS NOT NULL").fetchall():
+                self.db.execute("UPDATE Layer SET LayerUuid = ? WHERE MainId = ?", (new_layer_uuid(), layer_id))
+
     # --- rows -------------------------------------------------------------
     def insert_row(self, table: str, values: dict[str, object]) -> None:
         columns = [column for column in values if column in set(column_names(self.db, table))]

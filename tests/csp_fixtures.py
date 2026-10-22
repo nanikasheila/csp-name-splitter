@@ -239,6 +239,7 @@ def _add_editing_schema(database: sqlite3.Connection) -> None:
         " ComicStoryStoryIndex = 3;"
         "ALTER TABLE Layer ADD COLUMN LayerRenderThumbnail;"
         "ALTER TABLE Layer ADD COLUMN LayerUuid;"
+        "UPDATE Layer SET LayerUuid = 'fixture-layer-' || MainId;"
         "ALTER TABLE Layer ADD COLUMN VectorNormalStrokeIndex;"
         "ALTER TABLE Layer ADD COLUMN ComicStoryInfoType;"
         "UPDATE Layer SET ComicStoryInfoType = 1 WHERE LayerType = 800;"

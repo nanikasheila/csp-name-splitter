@@ -30,6 +30,7 @@ from name_splitter.csp import read_clip, read_cmc
 from name_splitter.csp.clip_editor import ClipEditor
 from name_splitter.csp.cmc_writer import write_cmc
 from name_splitter.csp.container import open_sqlite_bytes, read_csf_container
+from name_splitter.csp.container_writer import head_file_id
 from name_splitter.csp.page_writer import write_page
 from name_splitter.csp.split_plan import plan_sheet
 from name_splitter.csp.text_attributes import build_tlv, parse_text_attributes, parse_tlv
@@ -193,6 +194,13 @@ def test_split_cli_writes_work(tmp_path: Path, sheet_path: Path, template_path: 
     project = read_cmc(out / "第1話.cmc")
     assert [page.file_name for page in project.pages] == [f"page{number:04d}.clip" for number in range(1, 5)]
     assert [_canvas_page(out / page.file_name)[0] for page in project.pages] == [0, 1, 2, 3]
+    # Every page is its own file for CSP: distinct file ids and layer uuids.
+    containers = [read_csf_container(out / page.file_name) for page in project.pages]
+    assert len({head_file_id(container) for container in containers}) == 4
+    uuids = [uuid for container in containers
+             for (uuid,) in open_sqlite_bytes(container.sqlite_bytes).execute("SELECT LayerUuid FROM Layer")
+             if uuid]
+    assert len(uuids) == len(set(uuids)) > 4
     # Story info comes from the work's .cmc, not from the template page.
     assert _canvas_value(out / "page0001.clip", "ComicStoryStoryName") == "Story"
     # --story-index overrides the episode number in the work and every page.
