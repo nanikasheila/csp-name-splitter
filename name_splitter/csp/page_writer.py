@@ -34,6 +34,8 @@ from .vector import select_vector_objects, transform_vector_data
 # Not Canvas: a spread sheet has ComicStory/NombreRightLayerCreated columns, and a single right
 # page that has them (as NULL) makes CSP rebuild its story info layers and mark the page modified.
 SCHEMA_TABLES = ("Layer", "VectorObjectList", "BrushStyleManager", "BrushStyle")
+# Without Canvas.BrushStyleManager, CSP opens vector layers (panel frames, lines) empty.
+CANVAS_COLUMNS = {"BrushStyleManager", "BrushStyleReadProtect070"}
 # Vector objects refer to brush styles by id, so these rows keep their ids.
 SHARED_TABLES = ("BrushStyleManager", "BrushStyle")
 TEXT_BLOBS = ("TextLayerAttributes",)
@@ -74,6 +76,7 @@ def write_page(template: str | Path, sheet: ClipDocument, page: PlannedPage, out
     _update_nombre(editor.db)
     source = open_sqlite_bytes(sheet.container.sqlite_bytes)
     merge_schema(editor.db, source, list(SCHEMA_TABLES))
+    merge_schema(editor.db, source, ["Canvas"], columns=CANVAS_COLUMNS)
     _share_rows(editor.db, source)
     result = PageResult(path=Path(output))
     folders: dict[int, int] = {}

@@ -231,9 +231,13 @@ def test_split_cli_writes_work(tmp_path: Path, sheet_path: Path, template_path: 
     # Pages keep the template's Canvas columns: spread-only columns from the sheet would
     # make CSP rebuild the story info of right-hand pages on open.
     for page in project.pages:
-        columns = {row[1] for row in open_sqlite_bytes(read_csf_container(out / page.file_name).sqlite_bytes)
-                   .execute("PRAGMA table_info(Canvas)")}
+        database = open_sqlite_bytes(read_csf_container(out / page.file_name).sqlite_bytes)
+        columns = {row[1] for row in database.execute("PRAGMA table_info(Canvas)")}
         assert "ComicStoryRightLayerCreated" not in columns
+        # ...but CSP draws vector layers only with the brush style link.
+        assert database.execute("SELECT BrushStyleManager FROM Canvas").fetchone()[0] == 8
+        assert database.execute("SELECT LinkTable FROM ParamScheme WHERE TableName = 'Canvas' "
+                                "AND LabelName = 'BrushStyleManager'").fetchone()[0] == "BrushStyleManager"
     # Story info comes from the work's .cmc, not from the template page.
     assert _canvas_value(out / "page0001.clip", "ComicStoryStoryName") == "Story"
     # --story-index overrides the episode number in the work and every page.
