@@ -81,6 +81,8 @@ SQLite の `ExternalChunk` テーブルが「外部ID → ファイル内の位�
 `CanvasUnit`（2 = mm, 0 = px と推測）、`CanvasWidth` / `CanvasHeight`、`CanvasResolution`、`CanvasRootFolder`（ルートフォルダのレイヤーID）、
 トンボ（`CropFrame*`）、作品情報（`ComicStory*`、`.cmc` の値の写し）、`ComicPageIndex` など。
 
+- 基本枠は `CropFrameInnerWidth` / `CropFrameInnerHeight`（観察値 212×300mm）。`CropFrameInnerOffsetX/Y` は中央からのずれと推測（観察値はすべて 0、
+  `CropFrameInnerOffsetBasePosition` の意味は未解明）。分割では既定でネームの内枠をこの基本枠に合わせる
 - `ComicPageIndex` は作品内のページ位置（0 始まり、見開きは 2 ページ分）、`ComicIsLeftPage` は左ページかどうか。
   6 ファイルで「位置が 1 つ進むごとに左右が入れ替わる」ことと矛盾しない。右綴じ・`ComicStartPage = 0` の作品では位置 0 が左ページ。
   ページを書き出すときは、テンプレートのページの組を基準に左右を決める（綴じ方向の推測が要らない）

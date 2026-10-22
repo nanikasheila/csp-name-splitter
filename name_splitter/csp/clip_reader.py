@@ -58,6 +58,8 @@ class ClipCanvas:
     height_px: int
     is_double_page: bool
     crop_size_px: tuple[int, int] | None = None
+    basic_size_px: tuple[int, int] | None = None
+    basic_offset_px: tuple[int, int] = (0, 0)
 
     @property
     def single_page_width_px(self) -> int:
@@ -248,20 +250,39 @@ def _build_canvas(row: sqlite3.Row) -> ClipCanvas:
         height_px=_to_pixels(height, unit, resolution),
         is_double_page=bool(row["CanvasDoublePage"]) if "CanvasDoublePage" in row.keys() else False,
         crop_size_px=_crop_size(row, resolution),
+        basic_size_px=_crop_size(row, resolution, "CropFrameInnerWidth", "CropFrameInnerHeight"),
+        basic_offset_px=_basic_offset(row, resolution),
     )
 
 
-def _crop_size(row: sqlite3.Row, resolution: float) -> tuple[int, int] | None:
-    """Trim (仕上がり) frame size of one page in pixels, if the canvas has one."""
+def _crop_size(row: sqlite3.Row, resolution: float, width_column: str = "CropFrameWidth",
+               height_column: str = "CropFrameHeight") -> tuple[int, int] | None:
+    """Trim (仕上がり) frame size of one page in pixels, if the canvas has one.
+
+    With the ``CropFrameInner*`` columns it gives the basic frame (基本枠) instead.
+    """
     keys = row.keys()
-    if "CropFrameWidth" not in keys or "CropFrameHeight" not in keys:
+    if width_column not in keys or height_column not in keys:
         return None
-    width, height = float(row["CropFrameWidth"] or 0), float(row["CropFrameHeight"] or 0)
+    width, height = float(row[width_column] or 0), float(row[height_column] or 0)
     if width <= 0 or height <= 0:
         return None
-    unit_kind = int(row["CropFrameUnitKind"] or 0) if "CropFrameUnitKind" in keys else 0
-    unit = CANVAS_UNIT_NAMES.get(unit_kind, "px")
+    unit = _crop_unit(row)
     return _to_pixels(width, unit, resolution), _to_pixels(height, unit, resolution)
+
+
+def _basic_offset(row: sqlite3.Row, resolution: float) -> tuple[int, int]:
+    """Offset of the basic frame (基本枠) from the trim frame's centre, in pixels."""
+    keys = row.keys()
+    unit = _crop_unit(row)
+    x = float(row["CropFrameInnerOffsetX"] or 0) if "CropFrameInnerOffsetX" in keys else 0.0
+    y = float(row["CropFrameInnerOffsetY"] or 0) if "CropFrameInnerOffsetY" in keys else 0.0
+    return _to_pixels(x, unit, resolution), _to_pixels(y, unit, resolution)
+
+
+def _crop_unit(row: sqlite3.Row) -> str:
+    unit_kind = int(row["CropFrameUnitKind"] or 0) if "CropFrameUnitKind" in row.keys() else 0
+    return CANVAS_UNIT_NAMES.get(unit_kind, "px")
 
 
 def _to_pixels(value: float, unit: str, resolution: float) -> int:

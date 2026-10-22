@@ -96,9 +96,24 @@ def test_fit_frame_puts_inner_frame_on_trim() -> None:
     assert transform.map_box((10, 20, 70, 100)) == pytest.approx((100, 100, 700, 900))
 
 
+def test_plan_fits_frames_to_basic_frame(sheet_path: Path) -> None:
+    trim = centered_trim(800, 1200, 700, 1000)
+    basic = centered_trim(800, 1200, 600, 900, offset=(10, -20))
+    plan = plan_sheet(read_clip(sheet_path), 800, 1200, trim=trim, basic=basic)
+    assert plan.warnings == [w for w in plan.warnings if "24" in w]
+    first = plan.pages[0]
+    assert first.cell.frame is not None
+    frame = first.cell.frame
+    mapped = first.transform.map_box((frame.x0, frame.y0, frame.x1, frame.y1))
+    # 330x480 frame on a 600x900 basic frame: width decides the scale, centred vertically.
+    assert mapped[0] == pytest.approx(110) and mapped[2] == pytest.approx(710)
+    assert (mapped[1] + mapped[3]) / 2 == pytest.approx(580)
+
+
 def test_plan_fits_frames_to_trim(sheet_path: Path) -> None:
     trim = centered_trim(800, 1200, 600, 900)
-    plan = plan_sheet(read_clip(sheet_path), 800, 1200, trim=trim)
+    plan = plan_sheet(read_clip(sheet_path), 800, 1200, fit="trim", trim=trim,
+                      basic=centered_trim(800, 1200, 400, 600))
     assert plan.warnings == [w for w in plan.warnings if "24" in w]
     first = plan.pages[0]
     assert first.cell.frame is not None
@@ -111,8 +126,14 @@ def test_plan_fits_frames_to_trim(sheet_path: Path) -> None:
 
 def test_plan_frame_fit_without_trim_falls_back(sheet_path: Path) -> None:
     plan = plan_sheet(read_clip(sheet_path), 800, 600)
-    assert any("trim" in warning for warning in plan.warnings)
+    assert any("basic frame" in warning for warning in plan.warnings)
     assert plan.pages[0].transform == fit_cell(plan.pages[0].cell.rect, 800, 600)
+    # Without a basic frame, the trim frame is used.
+    trim = centered_trim(800, 600, 600, 500)
+    plan = plan_sheet(read_clip(sheet_path), 800, 600, trim=trim)
+    assert any("trim frame instead" in warning for warning in plan.warnings)
+    assert plan.pages[0].transform == plan_sheet(read_clip(sheet_path), 800, 600, fit="trim",
+                                                 trim=trim).pages[0].transform
     with pytest.raises(ValueError):
         plan_sheet(read_clip(sheet_path), 800, 600, fit="stretch")
 
@@ -145,10 +166,12 @@ def test_plan_cli_writes_json_and_preview(sheet_path: Path, tmp_path: Path) -> N
     assert exit_code == 0
     data = json.loads(output.read_text(encoding="utf-8"))
     assert data["page_size_px"] == [800, 600]
-    assert data["fit"] == "frame" and data["trim_px"] == [100, 50, 700, 550]
+    assert data["fit"] == "basic" and data["trim_px"] == [100, 50, 700, 550] and data["basic_px"] is None
     assert [page["number"] for page in data["pages"]] == [3, 4, 5, 6]
     assert data["pages"][0]["contents"][0]["crop"] == [1200, 40, 1560, 560]
     assert preview.exists()
+    assert main(["plan", str(sheet_path), "--output", str(output), "--basic-size", "500x400"]) == 0
+    assert json.loads(output.read_text(encoding="utf-8"))["basic_px"] == [150, 100, 650, 500]
 
 
 def test_plan_cli_rejects_bad_options(sheet_path: Path, tmp_path: Path) -> None:

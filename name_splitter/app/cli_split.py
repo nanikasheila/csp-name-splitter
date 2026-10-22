@@ -31,7 +31,9 @@ def add_split_parser(subparsers: argparse._SubParsersAction) -> None:
     parser.add_argument("--template", required=True, help="Empty page .clip saved by CSP for the same work")
     parser.add_argument("--out-dir", required=True, help="Folder for the page files")
     parser.add_argument("--pages", help="Comma-separated page numbers to write (default: pages with content)")
-    parser.add_argument("--fit", choices=FITS, default="frame", help="How a cell maps onto the page")
+    parser.add_argument("--fit", choices=FITS, default="basic",
+                        help="Page frame each cell's inner frame is enlarged onto: basic (基本枠, default), "
+                             "trim (仕上がり) or cell (the whole cell into the canvas)")
     parser.add_argument("--order", choices=ORDERS, default="rtl_ttb", help="Reading order of the cells")
     parser.add_argument("--first-page", type=int, default=1, help="Page number of the first cell")
     parser.add_argument("--name", default="page{page:04d}.clip", help="File name pattern")
@@ -69,8 +71,11 @@ def run_split_subcommand(args: argparse.Namespace) -> int:
         width, height = template.canvas.width_px, template.canvas.height_px
         trim_size = template.canvas.crop_size_px
         trim = centered_trim(width, height, *trim_size) if trim_size else None
+        basic_size = template.canvas.basic_size_px
+        basic = (centered_trim(width, height, *basic_size, offset=template.canvas.basic_offset_px)
+                 if basic_size else None)
         plan = plan_sheet(sheet, width, height, order=args.order, first_page=args.first_page,
-                          fit=args.fit, trim=trim)
+                          fit=args.fit, trim=trim, basic=basic)
         out_dir.mkdir(parents=True, exist_ok=True)
         pages = [page for page in sorted(plan.pages, key=lambda item: item.number)
                  if (page.number in wanted if wanted is not None else bool(args.cmc or page.contents))]

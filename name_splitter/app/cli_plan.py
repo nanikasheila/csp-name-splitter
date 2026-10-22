@@ -30,13 +30,17 @@ def add_plan_parser(subparsers: argparse._SubParsersAction) -> None:
         help="Output page canvas in px (default: the sheet's single-page size)",
     )
     parser.add_argument(
-        "--fit", choices=FITS, default="frame",
-        help="frame: put each cell's inner frame on the page's trim frame (default); "
-             "cell: fit the whole cell into the page canvas",
+        "--fit", choices=FITS, default="basic",
+        help="basic: put each cell's inner frame on the page's basic frame (基本枠, default); "
+             "trim: on the trim frame (仕上がり); cell: fit the whole cell into the page canvas",
     )
     parser.add_argument(
         "--trim-size", metavar="WxH",
         help="Trim frame of the output page in px, centred (default: the sheet's trim frame setting)",
+    )
+    parser.add_argument(
+        "--basic-size", metavar="WxH",
+        help="Basic frame of the output page in px, centred (default: the sheet's basic frame setting)",
     )
     parser.add_argument("--order", choices=ORDERS, default="rtl_ttb", help="Reading order of the cells")
     parser.add_argument("--first-page", type=int, default=1, help="Page number of the first cell")
@@ -60,8 +64,12 @@ def run_plan_subcommand(args: argparse.Namespace) -> int:
             document.canvas.single_page_width_px, document.canvas.height_px)
         trim_size = _size_option(args.trim_size, "--trim-size") or document.canvas.crop_size_px
         trim = centered_trim(width, height, *trim_size) if trim_size else None
+        basic_option = _size_option(args.basic_size, "--basic-size")
+        basic_size = basic_option or document.canvas.basic_size_px
+        offset = (0, 0) if basic_option else document.canvas.basic_offset_px
+        basic = centered_trim(width, height, *basic_size, offset=offset) if basic_size else None
         plan = plan_sheet(document, width, height, order=args.order, first_page=args.first_page,
-                          fit=args.fit, trim=trim)
+                          fit=args.fit, trim=trim, basic=basic)
     except ValueError as exc:  # CspFormatError is a ValueError too
         label = "Format error" if isinstance(exc, CspFormatError) else "Invalid option"
         print(f"{label}: {exc}", file=sys.stderr)
