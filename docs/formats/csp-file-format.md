@@ -105,6 +105,14 @@ SQLite の `ExternalChunk` テーブルが「外部ID → ファイル内の位�
 | `TextLayerString` がある | テキストレイヤー（本文は UTF-8） |
 | `VectorObjectList.LayerId` にある | ベクターレイヤー |
 
+作品情報レイヤー（`LayerType = 800`）は `ComicStoryInfoType` が 1 = 作品名・話数・作者名、2 = ノンブル。レイヤーパレットには出ない。
+1 の `TextLayerString` に「作品名 N話」、`TextLayerStringArray` に作者名を持つ。
+
+未解明（2026-10-22、CSP EX 5.1.4）: 第3話のページをテンプレートにすると、`TextLayerString`・`Canvas.ComicStory*`・書式（文字数・外接矩形）を
+変えても、ファイル内に「ユメノストラ」が一つも無い状態（VACUUM 後）でも、CSP は「ユメノストラ 3話」と表示した。
+作品情報レイヤーを外すと何も表示されず、別作品のページは自分の作品名を表示する。CSP はファイルの外（開いている作品か内部の記憶）から
+この表示を引いているとみられる。確認用ファイルは `tools/csp_story_info_check.py` で作れる。
+
 その他の列: `LayerVisibility`（bit0 = 表示）、`LayerOpacity`（256 = 100%）、`LayerComposite`（合成モード、0 = 通常。他の値の対応は未解明）、
 `LayerOffsetX/Y`、`LayerClip`、`LayerLock`、`LayerRenderMipmap`（描画結果）、`LayerLayerMaskMipmap`（マスク）。
 

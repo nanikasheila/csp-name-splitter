@@ -14,11 +14,10 @@ import argparse
 from pathlib import Path
 import sys
 
-from name_splitter.csp import CspFormatError, read_clip
-from name_splitter.csp.cmc_writer import work_canvas_values, write_cmc
+from name_splitter.csp import CspFormatError
 from name_splitter.csp.name_layout import ORDERS
-from name_splitter.csp.page_writer import write_page
-from name_splitter.csp.split_plan import FITS, centered_trim, plan_sheet
+from name_splitter.csp.split_job import SplitOptions, prepare_split, run_split
+from name_splitter.csp.split_plan import FITS
 
 
 def add_split_parser(subparsers: argparse._SubParsersAction) -> None:
@@ -51,74 +50,33 @@ def run_split_subcommand(args: argparse.Namespace) -> int:
     Returns:
         Exit code: 0 on success, 1 on parse error, 2 on usage error.
     """
-    sheet_path, template_path = Path(args.input_path), Path(args.template)
-    cmc_template = _cmc_template(args, sheet_path)
-    inputs = [sheet_path, template_path] + ([cmc_template] if cmc_template else [])
-    for path in inputs:
-        if not path.exists():
-            print(f"Input file not found: {path}", file=sys.stderr)
-            return 2
-    if args.cmc and cmc_template is None:
-        print("--cmc needs --cmc-template (no single .cmc found next to the sheet)", file=sys.stderr)
-        return 2
-    out_dir = Path(args.out_dir)
-    if out_dir.resolve() in {path.resolve().parent for path in inputs}:
-        print("--out-dir must differ from the input folders so originals are never overwritten", file=sys.stderr)
-        return 2
     try:
-        wanted = _page_numbers(args.pages)
-        sheet, template = read_clip(sheet_path), read_clip(template_path)
-        width, height = template.canvas.width_px, template.canvas.height_px
-        trim_size = template.canvas.crop_size_px
-        trim = centered_trim(width, height, *trim_size) if trim_size else None
-        basic_size = template.canvas.basic_size_px
-        basic = (centered_trim(width, height, *basic_size, offset=template.canvas.basic_offset_px)
-                 if basic_size else None)
-        plan = plan_sheet(sheet, width, height, order=args.order, first_page=args.first_page,
-                          fit=args.fit, trim=trim, basic=basic)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        pages = [page for page in sorted(plan.pages, key=lambda item: item.number)
-                 if (page.number in wanted if wanted is not None else bool(args.cmc or page.contents))]
-        written = []
-        work_values = work_canvas_values(cmc_template) if args.cmc and cmc_template is not None else {}
-        overrides: dict[str, object] = {}
-        if args.story_index is not None:
-            overrides = {"ComicStoryUseStoryIndex": 1, "ComicStoryStoryIndex": args.story_index}
-        work_values.update(overrides)
-        for position, page in enumerate(pages):
-            result = write_page(template_path, sheet, page, out_dir / args.name.format(page=page.number),
-                                page_index=position if args.cmc else None, canvas_values=work_values)
-            written.append(result.path)
-            print(f"Wrote {result.path} ({len(result.layer_ids)} layers)")
-            for warning in result.warnings:
-                print(f"Warning: page {page.number}: {warning}", file=sys.stderr)
-        if args.cmc and cmc_template is not None:
-            if not written:
-                raise ValueError("No pages to put in the work")
-            work = write_cmc(cmc_template, written, out_dir / f"{args.cmc}.cmc", project_values=overrides)
-            print(f"Wrote {work} ({len(written)} pages)")
+        options = SplitOptions(
+            sheet=Path(args.input_path), template=Path(args.template), out_dir=Path(args.out_dir),
+            cmc_name=args.cmc, cmc_template=Path(args.cmc_template) if args.cmc_template else None,
+            pages=_page_numbers(args.pages), fit=args.fit, order=args.order, first_page=args.first_page,
+            story_index=args.story_index, file_name=args.name,
+        )
+        prepared = prepare_split(options)
+        result = run_split(prepared, on_page=lambda done, total, path: print(f"Wrote {path} ({done}/{total})"))
+    except FileNotFoundError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     except ValueError as exc:  # CspFormatError is a ValueError too
         label = "Format error" if isinstance(exc, CspFormatError) else "Invalid option"
         print(f"{label}: {exc}", file=sys.stderr)
         return 1 if isinstance(exc, CspFormatError) else 2
-    for warning in plan.warnings:
+    if result.cmc is not None:
+        print(f"Wrote {result.cmc} ({len(result.pages)} pages)")
+    for warning in result.warnings:
         print(f"Warning: {warning}", file=sys.stderr)
     return 0
 
 
-def _cmc_template(args: argparse.Namespace, sheet_path: Path) -> Path | None:
-    if args.cmc_template:
-        return Path(args.cmc_template)
-    if not args.cmc:
-        return None
-    found = sorted(sheet_path.parent.glob("*.cmc"))
-    return found[0] if len(found) == 1 else None
-
-
-def _page_numbers(option: str | None) -> set[int] | None:
+def _page_numbers(option: str | None) -> frozenset[int] | None:
     if not option:
         return None
     try:
-        return {int(part) for part in option.split(",") if part.strip()}
+        return frozenset(int(part) for part in option.split(",") if part.strip())
     except ValueError as exc:
         raise ValueError(f"--pages must be comma-separated numbers, got {option!r}") from exc

@@ -166,6 +166,11 @@ class GuiHandlers(
         """
         self.w.ui.progress_bar.value = max(0.0, min(1.0, done / total)) if total else None
 
+    def set_preview_png(self, png: bytes) -> None:
+        """Show a PNG in the preview pane (used by the CSP split tab)."""
+        self.w.ui.preview_image.src = f"data:image/png;base64,{base64.b64encode(png).decode('ascii')}"
+        self.w.ui.preview_loading_ring.visible = False
+
     def flush(self) -> None:
         """Commit all pending widget value changes to the Flet page.
 
@@ -887,7 +892,8 @@ class GuiHandlers(
         Why: The active tab determines which preview to show when
              auto_preview_if_enabled is triggered.
         How: Maps UI tab indices to preview-relevant state:
-             Tab 0 (Config) and Tab 3 (Log) are not preview-relevant.
+             Tab 0 (Config), Tab 3 (CSP Split, its own preview), Tab 4 (Batch)
+             and Tab 5 (Log) are not preview-relevant.
              Tab 1 (Image Split) → state index 0.
              Tab 2 (Template) → state index 1.
              Preview-relevant tabs trigger an immediate synchronous refresh.

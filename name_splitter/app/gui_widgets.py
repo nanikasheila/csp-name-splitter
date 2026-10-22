@@ -147,7 +147,7 @@ class WidgetBuilder(WidgetLayoutMixin):
         fields["grid_color_swatch"] = ft.Container(
             width=24, height=24, border_radius=4,
             bgcolor="#FF5030",
-            border=ft.border.all(1, outline),
+            border=ft.Border.all(1, outline),
         )
         
         # -- Margin (4 directions + unit) --
@@ -288,7 +288,7 @@ class WidgetBuilder(WidgetLayoutMixin):
         fields["finish_color_swatch"] = ft.Container(
             width=24, height=24, border_radius=4,
             bgcolor="#FFFFFF",
-            border=ft.border.all(1, outline),
+            border=ft.Border.all(1, outline),
         )
         
         # -- Basic frame --
@@ -328,7 +328,7 @@ class WidgetBuilder(WidgetLayoutMixin):
         fields["basic_color_swatch"] = ft.Container(
             width=24, height=24, border_radius=4,
             bgcolor="#00AAFF",
-            border=ft.border.all(1, outline),
+            border=ft.Border.all(1, outline),
         )
         
         return fields
