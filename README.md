@@ -249,6 +249,23 @@ python -m name_splitter.app.cli name_16pages.png \
 python -m name_splitter.app.cli name_16pages.png --page 3
 ```
 
+#### .clip / .cmc の構造を確認する（開発中）
+
+レイヤーを保ったままのページ分割（.cmc ＋ ページ単位の .clip の生成）に向けて、CSP のファイルを読み取り専用で解析する `inspect` サブコマンドがあります。入力ファイルは変更しません。
+
+```bash
+# レイヤーツリー（名前・種類・表示・不透明度・位置）を JSON で表示
+python -m name_splitter.app.cli inspect page0001.clip
+
+# ラスターレイヤーの保存サイズと描画範囲も表示
+python -m name_splitter.app.cli inspect page0001.clip --pixels
+
+# 複数ページ作品のページ順を表示
+python -m name_splitter.app.cli inspect 作品.cmc --output pages.json
+```
+
+形式の詳細は [docs/formats/csp-file-format.md](docs/formats/csp-file-format.md) を参照してください。
+
 ### 設定ファイル
 
 `config.yaml` で詳細な設定が可能です。

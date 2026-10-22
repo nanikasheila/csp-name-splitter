@@ -25,9 +25,10 @@ from name_splitter.core import (
     run_job,
 )
 from name_splitter.core.config import OutputConfig
+from name_splitter.app.cli_inspect import add_inspect_parser, run_inspect_subcommand
 
 # Subcommand names that trigger the extended parser path
-_SUBCOMMANDS: frozenset[str] = frozenset({"template", "batch"})
+_SUBCOMMANDS: frozenset[str] = frozenset({"template", "batch", "inspect"})
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -122,6 +123,9 @@ def _build_subcommand_parser() -> argparse.ArgumentParser:
         "--recursive", action="store_true",
         help="Recursively scan sub-directories for PNG files",
     )
+
+    # --- inspect subcommand ---
+    add_inspect_parser(subparsers)
 
     return parser
 
@@ -278,6 +282,8 @@ def main(argv: list[str] | None = None) -> int:
             return _run_template_subcommand(sub_args)
         if sub_args.subcommand == "batch":
             return _run_batch_subcommand(sub_args)
+        if sub_args.subcommand == "inspect":
+            return run_inspect_subcommand(sub_args)
 
     # Default path: original image-split workflow (backward compatible)
     args = build_parser().parse_args(args_list)
