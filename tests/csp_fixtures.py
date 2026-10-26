@@ -86,20 +86,39 @@ def _utf16_name(name: str) -> bytes:
     return struct.pack(">I", len(name)) + name.encode("utf-16-be")
 
 
-def build_attribute(width: int, height: int, gray: bool) -> bytes:
+def build_attribute(width: int, height: int, gray: bool, block_sizes: list[int] | None = None) -> bytes:
+    """An offscreen Attribute as CSP lays it out: a header with the lengths of
+    the Parameter, InitColor and BlockSize sections, then those sections.
+    ``block_sizes`` are the payload's record lengths (default: nothing stored)."""
     blocks_x, blocks_y = -(-width // BLOCK), -(-height // BLOCK)
-    kind, color_planes = (17, 1) if gray else (33, 4)
-    params = [width, height, blocks_x, blocks_y, kind, 1, color_planes, color_planes + 1]
-    return struct.pack(">IIII", 16, 102, 42, 0) + _utf16_name("Parameter") + struct.pack(">8I", *params)
+    count = blocks_x * blocks_y
+    if gray:
+        # Channel order, bytes per channel, image channels, bytes per pixel, then the planes' layout.
+        layout = [17, 1, 1, 2, 65536, 1, 256, 1, 256]
+    else:
+        layout = [33, 1, 4, 5, 65536, 4, 1024, 1, 256]
+    params = [width, height, blocks_x, blocks_y, *layout, 65536, BLOCK, BLOCK, 8, 8, 0, 0]
+    parameter = _utf16_name("Parameter") + struct.pack(f">{len(params)}I", *params)
+    init = _utf16_name("InitColor") + struct.pack(">6I", 20, 0, 0, 0, 0, 4)
+    # Record length of each block (0x68 for one that stores nothing), as in the payload.
+    records = block_sizes if block_sizes is not None else [0x68] * count
+    sizes = _utf16_name("BlockSize") + struct.pack(">III", 12, count, 4) + struct.pack(f">{count}I", *records)
+    return struct.pack(">IIII", 16, len(parameter), len(init), len(sizes)) + parameter + init + sizes
 
 
 def build_block_payload(image: Image.Image, gray: bool) -> bytes:
     """Encode an RGBA image as CSP block records (alpha plane + color planes)."""
+    return _block_records(image, gray)[0]
+
+
+def _block_records(image: Image.Image, gray: bool) -> tuple[bytes, list[int]]:
+    """The block payload of ``image`` and each record's length."""
     rgba = image.convert("RGBA")
     width, height = rgba.size
     blocks_x, blocks_y = -(-width // BLOCK), -(-height // BLOCK)
     records = b""
     checksums: list[int] = []
+    record_sizes: list[int] = []
     for index in range(blocks_x * blocks_y):
         row, column = divmod(index, blocks_x)
         tile = Image.new("RGBA", (BLOCK, BLOCK), (0, 0, 0, 0))
@@ -121,12 +140,13 @@ def build_block_payload(image: Image.Image, gray: bool) -> bytes:
         body += _utf16_name("BlockDataEndChunk")
         head = _utf16_name("BlockDataBeginChunk")
         records += struct.pack(">I", 4 + len(head) + len(body)) + head + body
+        record_sizes.append(4 + len(head) + len(body))
         checksums.append(checksum)
     count = blocks_x * blocks_y
     status = _utf16_name("BlockStatus") + struct.pack(">III", 12, count, 4) + struct.pack(f">{count}I", *([1] * count))
     sums = _utf16_name("BlockCheckSum") + struct.pack(">III", 12, count, 4) + struct.pack(f">{count}I", *checksums)
     content = records + status + sums
-    return struct.pack(">Q", len(content)) + content
+    return struct.pack(">Q", len(content)) + content, record_sizes
 
 
 def _flatten(layers: list[FixtureLayer]) -> list[FixtureLayer]:
@@ -161,6 +181,8 @@ def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], 
         "CREATE TABLE ExternalChunk(ExternalID, Offset);"
         "CREATE TABLE CanvasPreview(ImageData);"
         "CREATE TABLE VectorObjectList(MainId, LayerId, VectorData);"
+        "CREATE TABLE Project(MainId, ProjectInternalVersion, ProjectName, ProjectCanvas);"
+        "INSERT INTO Project VALUES(1, '1.1.0', '', 1);"
     )
     database.execute("INSERT INTO Canvas VALUES(1, 0, ?, ?, 350.0, 1, ?)", (width, height, int(double_page)))
     externals: list[tuple[str, bytes]] = []
@@ -178,11 +200,12 @@ def build_clip(path: Path, width: int, height: int, layers: list[FixtureLayer], 
             external_id = f"extrnlid{position:032X}"
             database.execute("INSERT INTO Mipmap VALUES(?, ?)", (mipmap, mipmap))
             database.execute("INSERT INTO MipmapInfo VALUES(?, ?)", (mipmap, mipmap))
+            payload, sizes = _block_records(layer.image, layer.gray)
             database.execute(
                 "INSERT INTO Offscreen VALUES(?, ?, ?)",
-                (mipmap, build_attribute(*layer.image.size, layer.gray), external_id.encode()),
+                (mipmap, build_attribute(*layer.image.size, layer.gray, sizes), external_id.encode()),
             )
-            externals.append((external_id, build_block_payload(layer.image, layer.gray)))
+            externals.append((external_id, payload))
         database.execute(
             "INSERT INTO Layer VALUES(?,?,?,?,?,?,0,?,?,0,0,?,?,?,0,?,?,?,?,0,0)",
             (
