@@ -315,6 +315,8 @@ python -m name_splitter.app.cli split ネーム用紙.clip --template 空ペー�
 
 形式の詳細は [docs/formats/csp-file-format.md](docs/formats/csp-file-format.md) を参照してください。
 
+> .clip / .cmc の形式の仕様は、いまは [csp-format の docs/spec](https://github.com/nanikasheila/csp-format/tree/main/docs/spec) が正本です（このツールの Rust 版で、検査と書き戻しまで持っています）。こちらの文書とコードは、このツールが使っている範囲の覚え書きと参照用の実装として残しています。形式について新しく分かったことは csp-format の仕様に書いてください。
+
 ### 設定ファイル
 
 `config.yaml` で詳細な設定が可能です。
